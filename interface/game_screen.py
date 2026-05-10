@@ -17,6 +17,11 @@ from interface.sprites import (draw_raised, draw_sunken,
                      make_cell_sprites, make_face_sprites,
                      make_lcd_surface)
 
+#Imports de archivos.
+from utils.utils import revelar_celdas_vacias
+from data.bombas import Bombas
+from data.lugares_bomba import LugaresBomba
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "data"))
 from data.map import NOVATO, AFICIONADO, EXPERIMENTADO
 
@@ -192,6 +197,7 @@ class GameScreen:
         self.cols   = config["cols"]
         self.mines  = config["mines"]
         self.mode   = config["name"]
+        self.bombas_generadas = False
 
         self._diff_idx  = _DIFF_IDX.get(self.mode, 3)
         self._cell_size = CELL_SIZE
@@ -277,6 +283,7 @@ class GameScreen:
         self._elapsed     = 0
         self._left_held   = False
         self._mouse_cell  = None
+        self.bombas_generadas = False
 
     def _pixel_to_cell(self, px, py):
         cs = self._cell_size
@@ -337,13 +344,22 @@ class GameScreen:
             if cell is None: return None
             row, col = cell
             c = self._board[row][col]
+            
             if self.game_over or self.game_won: return None
-            if not self.game_active:
+
+            if not self.game_active: #Inicio de partida.
                 self.game_active = True
                 self._start_time = time.time()
+
             self._left_held = True
             if c["state"] == UNREVEALED:
                 self.face_state = FACE_OFACE
+
+            if not self.bombas_generadas:
+                generador = Bombas(self.rows, self.cols, self.mines)
+                ubicaciones = generador.generar_bombas((row, col))
+                LugaresBomba.colocar_numeros(self._board, ubicaciones)
+                self.bombas_generadas = True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             cell = self._pixel_to_cell(*event.pos)
@@ -366,7 +382,13 @@ class GameScreen:
                 row, col = cell
                 c = self._board[row][col]
                 if c["state"] == UNREVEALED:
-                    c["state"] = REVEALED
+                    revelar_celdas_vacias(
+                        self._board,
+                        row,
+                        col,
+                        self.rows,
+                        self.cols
+                    )
 
         return None
 
@@ -551,3 +573,5 @@ class GameScreen:
                    f"Restantes: {fl}  Tiempo: {self._elapsed}s  |  R -> reiniciar")
         txt = self._font_status.render(msg, True, self._STATUS_TXT)
         screen.blit(txt, (5, self._status_rect.y + 4))
+
+

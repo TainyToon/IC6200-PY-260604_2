@@ -1,4 +1,6 @@
+import random
 from interface.constants import UNREVEALED, REVEALED
+
 
 #Permite que las celdas 0 se abran solas si estan proximas
 def revelar_celdas_vacias(board, row, col, rows, cols):
@@ -29,3 +31,22 @@ def revelar_celdas_vacias(board, row, col, rows, cols):
                 rows,
                 cols
             )
+
+
+
+def ia_movimiento_random(board, inciertas, rows, cols):
+
+    if not inciertas:
+        return
+
+    row, col = random.choice(inciertas)
+
+    print(f"[IA] Movimiento aleatorio en ({row}, {col})")
+
+    revelar_celdas_vacias(
+        board,
+        row,
+        col,
+        rows,
+        cols
+    )

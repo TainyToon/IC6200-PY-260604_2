@@ -18,9 +18,12 @@ from interface.sprites import (draw_raised, draw_sunken,
                      make_lcd_surface)
 
 #Imports de archivos.
-from utils.utils import revelar_celdas_vacias
+from utils.utils import revelar_celdas_vacias, ia_movimiento_random
 from data.bombas import Bombas
 from data.lugares_bomba import LugaresBomba
+
+from knowledge.logic_ia import LogicIA
+from utils.utils import revelar_celdas_vacias
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "data"))
 from data.map import NOVATO, AFICIONADO, EXPERIMENTADO
@@ -49,6 +52,8 @@ _TOOLBAR_SEQ = [
 ]
 
 _NUM_DIFFS = 4   # 0=novato 1=aficionado 2=experimentado 3=personalizado
+
+
 
 
 def _open_custom_window():
@@ -192,12 +197,17 @@ class GameScreen:
     _STATUS_H   = 20
 
     def __init__(self, config: dict):
+        self.esperando_decision_usuario = False
+        self.inciertas_ia = []
+
         self.config = config
         self.rows   = config["rows"]
         self.cols   = config["cols"]
         self.mines  = config["mines"]
         self.mode   = config["name"]
         self.bombas_generadas = False
+        self.ia_auto = False
+        self._ultimo_mov_ia = 0
 
         self._diff_idx  = _DIFF_IDX.get(self.mode, 3)
         self._cell_size = CELL_SIZE
@@ -274,6 +284,13 @@ class GameScreen:
         return [[{"state": UNREVEALED, "value": 0, "hit": False}
                  for _ in range(self.cols)] for _ in range(self.rows)]
 
+
+
+
+
+
+    
+
     def reset(self):
         self._board = self._make_board()
         self.game_active = self.game_over = self.game_won = False
@@ -312,6 +329,29 @@ class GameScreen:
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_ESCAPE, pygame.K_r):
                 self.reset()
+            if event.key == pygame.K_i:
+                self.jugar_turno_ia()
+            if event.key == pygame.K_a:
+                 self.ia_auto = not self.ia_auto
+                 print("[IA] Auto:", self.ia_auto)
+             #Cuando la IA no sabe que hacer
+            if self.esperando_decision_usuario:
+
+                if event.key == pygame.K_y:
+                        ia_movimiento_random(
+                            self._board,
+                            self.inciertas_ia,
+                            self.rows,
+                            self.cols
+                        )
+                        self.esperando_decision_usuario = False
+                        
+                elif event.key == pygame.K_n:
+                    print("[IA] Control entregado al usuario.")
+                    self.esperando_decision_usuario = False
+
+           
+
 
         if event.type == pygame.MOUSEMOTION:
             self._mouse_cell = self._pixel_to_cell(*event.pos)
@@ -373,6 +413,9 @@ class GameScreen:
                 elif c["state"] == QUESTION:
                     c["state"] = UNREVEALED
 
+     
+
+
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self._left_held = False
             if self.face_state == FACE_OFACE:
@@ -396,6 +439,13 @@ class GameScreen:
         if self.game_active and not self.game_over and not self.game_won:
             if self._start_time is not None:
                 self._elapsed = min(999, int(time.time() - self._start_time))
+        if self.ia_auto and not self.game_over and not self.game_won:
+            ahora = time.time()
+
+            if ahora - self._ultimo_mov_ia >= 0.5:
+                self.jugar_turno_ia()
+                self._ultimo_mov_ia = ahora
+
 
     def get_size(self):
         return (self._win_w, self._win_h)
@@ -575,3 +625,62 @@ class GameScreen:
         screen.blit(txt, (5, self._status_rect.y + 4))
 
 
+
+    def jugar_turno_ia(self):
+        ia = LogicIA(self._board, self.rows, self.cols)
+
+        # Si es el primer movimiento, la IA hace click aleatorio
+        if not self.game_active:
+            row, col = ia.primer_movimiento()
+
+            self.game_active = True
+            self._start_time = time.time()
+
+            if not self.bombas_generadas:
+                generador = Bombas(self.rows, self.cols, self.mines)
+                ubicaciones = generador.generar_bombas((row, col))
+                LugaresBomba.colocar_numeros(self._board, ubicaciones)
+                self.bombas_generadas = True
+
+            revelar_celdas_vacias(
+                self._board,
+                row,
+                col,
+                self.rows,
+                self.cols
+            )
+
+            return
+
+        resultado = ia.analizar()
+
+        # Primero marca minas seguras
+        for row, col in resultado["minas"]:
+            celda = self._board[row][col]
+
+            if celda["state"] == UNREVEALED:
+                celda["state"] = FLAGGED
+                self.flags_placed += 1
+
+        # Luego revela celdas seguras
+        for row, col in resultado["seguras"]:
+            celda = self._board[row][col]
+
+            if celda["state"] == UNREVEALED:
+                revelar_celdas_vacias(
+                    self._board,
+                    row,
+                    col,
+                    self.rows,
+                    self.cols
+                )
+
+        # Si no pudo hacer nada logico, danis ka decision
+        if not resultado["minas"] and not resultado["seguras"]:
+            print("[IA] No hay movimientos lógicos seguros.")
+            print(f"[IA] Celdas inciertas: {len(resultado['inciertas'])}")
+            print("[IA] Presione Y para que la IA haga un movimiento aleatorio.")
+            print("[IA] Presione N para jugar manualmente.")
+
+            self.inciertas_ia = resultado["inciertas"]
+            self.esperando_decision_usuario = True

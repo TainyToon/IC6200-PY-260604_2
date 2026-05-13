@@ -27,6 +27,7 @@ class Bombas:
                     continue
 
                 posiciones_validas.append(posicion)
+                
 
         # Si ya no quedan suficientes posiciones nuevas, reiniciamos historial
         if len(posiciones_validas) < self.cantidad:
@@ -38,4 +39,7 @@ class Bombas:
         for pos in self.ubicaciones:
             Bombas.historial_ubicaciones.add(pos)
 
+        
+
+        print("Bombas: ", self.ubicaciones )
         return self.ubicaciones

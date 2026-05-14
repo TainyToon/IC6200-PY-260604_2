@@ -139,25 +139,38 @@ def _draw_flag_icon(surf, size):
     pygame.draw.line(surf, C_BLACK, (pole_x-bw//2, py1), (pole_x+bw//2, py1), 2)
 
 
-def _draw_mine_icon(surf, size, color=C_BLACK):
-    cx, cy = size//2, size//2
-    r = max(4, size//4)
-    for deg in range(0, 360, 45):
-        rad = math.radians(deg)
-        ex = int(cx + math.cos(rad)*(r + r//2 + 1))
-        ey = int(cy + math.sin(rad)*(r + r//2 + 1))
-        pygame.draw.line(surf, color, (cx, cy), (ex, ey), 2)
-    pygame.draw.circle(surf, color, (cx, cy), r)
-    pygame.draw.circle(surf, C_WHITE, (cx-r//3, cy-r//3), max(1, r//4))
 
 
 def make_cell_sprites(size):
     """
-    Claves: 'unrevealed', 'revealed', '1'..'8',
-            'flag', 'question', 'mine', 'mine_hit', 'mine_wrong'
+    Claves: 'unrevealed', 'revealed', '1'..'8', 'flag', 'question'
     """
+    # ── Patrones pixel-art 3×5 para dígitos 1-8 ──────────────────────────────
+    _PX = {
+        1: [[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],
+        2: [[1,1,0],[0,0,1],[0,1,0],[1,0,0],[1,1,1]],
+        3: [[1,1,0],[0,0,1],[0,1,0],[0,0,1],[1,1,0]],
+        4: [[1,0,1],[1,0,1],[1,1,1],[0,0,1],[0,0,1]],
+        5: [[1,1,1],[1,0,0],[1,1,0],[0,0,1],[1,1,0]],
+        6: [[0,1,1],[1,0,0],[1,1,0],[1,0,1],[0,1,0]],
+        7: [[1,1,1],[0,0,1],[0,1,0],[0,1,0],[0,1,0]],
+        8: [[1,1,1],[1,0,1],[1,1,1],[1,0,1],[1,1,1]],
+    }
+
+    def _draw_pixel_digit(surf, n, color, cell_size):
+        pattern = _PX[n]
+        px = max(2, cell_size // 8)   # tamaño de cada bloque
+        gw = 3 * px                    # ancho total del glifo
+        gh = 5 * px                    # alto total del glifo
+        ox = (cell_size - gw) // 2
+        oy = (cell_size - gh) // 2
+        for row, bits in enumerate(pattern):
+            for col, bit in enumerate(bits):
+                if bit:
+                    pygame.draw.rect(surf, color,
+                                     (ox + col*px, oy + row*px, px, px))
+
     spr = {}
-    fn  = pygame.font.SysFont("Arial", size-4, bold=True)
     fq  = pygame.font.SysFont("Arial", size-6, bold=True)
 
     spr["unrevealed"] = _make_raised_cell(size)
@@ -165,8 +178,7 @@ def make_cell_sprites(size):
 
     for n in range(1, 9):
         s = _make_flat_cell(size)
-        t = fn.render(str(n), True, NUM_COLORS[n])
-        s.blit(t, t.get_rect(center=(size//2, size//2)))
+        _draw_pixel_digit(s, n, NUM_COLORS[n], size)
         spr[str(n)] = s
 
     s = _make_raised_cell(size)
@@ -178,153 +190,4 @@ def make_cell_sprites(size):
     s.blit(q, q.get_rect(center=(size//2, size//2)))
     spr["question"] = s
 
-    s = _make_flat_cell(size)
-    _draw_mine_icon(s, size)
-    spr["mine"] = s
-
-    s = _make_flat_cell(size, bg=C_MINE_HIT)
-    _draw_mine_icon(s, size)
-    spr["mine_hit"] = s
-
-    s = _make_flat_cell(size)
-    _draw_mine_icon(s, size)
-    pygame.draw.line(s, (220,20,20), (3,3),       (size-4,size-4), 2)
-    pygame.draw.line(s, (220,20,20), (size-4,3),  (3,size-4),      2)
-    spr["mine_wrong"] = s
-
     return spr
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  Sprite de carita  (mejorado)
-# ══════════════════════════════════════════════════════════════════════════════
-
-def make_face_sprites(size):
-    """
-    Claves: "{estado}_normal" y "{estado}_pressed"
-    estado in {FACE_NORMAL, FACE_OFACE, FACE_WON, FACE_DEAD}
-    """
-    spr = {}
-
-    for state in (FACE_NORMAL, FACE_OFACE, FACE_WON, FACE_DEAD):
-        for pressed in (False, True):
-            surf = pygame.Surface((size, size))
-            surf.fill(C_BG)
-            if pressed:
-                draw_sunken(surf, (0,0,size,size), w=2)
-            else:
-                draw_raised(surf, (0,0,size,size), w=2)
-
-            off = 1 if pressed else 0
-            cx  = size//2 + off
-            cy  = size//2 + off
-            r   = size//2 - 3
-
-            # Cara amarilla
-            pygame.draw.circle(surf, (255,220,0), (cx,cy), r)
-            pygame.draw.circle(surf, C_BLACK,     (cx,cy), r, 1)
-
-            eye_r  = max(1, r//5)
-            eye_y  = cy - r*3//8
-            eye_xl = cx - r*3//8
-            eye_xr = cx + r*3//8
-
-            sw  = r*3//4
-            sh  = max(2, r//3)
-            smx = cx - sw//2
-            smy = cy + r//5
-
-            if state == FACE_DEAD:
-                d = eye_r + 1
-                for ex, ey in [(eye_xl, eye_y), (eye_xr, eye_y)]:
-                    pygame.draw.line(surf, C_BLACK, (ex-d,ey-d), (ex+d,ey+d), 2)
-                    pygame.draw.line(surf, C_BLACK, (ex+d,ey-d), (ex-d,ey+d), 2)
-                # boca triste (0..pi = curva hacia abajo en pantalla)
-                pygame.draw.arc(surf, C_BLACK,
-                                pygame.Rect(smx, smy, sw, sh),
-                                0, math.pi, 2)
-
-            elif state == FACE_WON:
-                gl_w = eye_r*4
-                gl_h = eye_r*3
-                for ex in (eye_xl, eye_xr):
-                    pygame.draw.rect(surf, C_BLACK,
-                                     (ex-gl_w//2, eye_y-gl_h//2, gl_w, gl_h))
-                    # reflejo
-                    pygame.draw.line(surf, (80,80,80),
-                                     (ex-gl_w//2+1, eye_y-gl_h//2+1),
-                                     (ex-gl_w//4,   eye_y-gl_h//2+1), 1)
-                # puente
-                pygame.draw.line(surf, C_BLACK,
-                                 (eye_xl+gl_w//2, eye_y),
-                                 (eye_xr-gl_w//2, eye_y), 2)
-                # sonrisa amplia
-                pygame.draw.arc(surf, C_BLACK,
-                                pygame.Rect(smx, smy, sw, sh),
-                                math.pi, 2*math.pi, 2)
-
-            elif state == FACE_OFACE:
-                for ex in (eye_xl, eye_xr):
-                    pygame.draw.ellipse(surf, C_BLACK,
-                                        pygame.Rect(ex-eye_r-1, eye_y-eye_r,
-                                                    (eye_r+1)*2, eye_r*2))
-                mouth_r = max(2, r//5)
-                pygame.draw.circle(surf, C_BLACK, (cx, cy+r*3//8), mouth_r)
-
-            else:  # FACE_NORMAL
-                pygame.draw.circle(surf, C_BLACK, (eye_xl, eye_y), eye_r)
-                pygame.draw.circle(surf, C_BLACK, (eye_xr, eye_y), eye_r)
-                # sonrisa (pi..2pi = curva hacia abajo en pantalla)
-                pygame.draw.arc(surf, C_BLACK,
-                                pygame.Rect(smx, smy, sw, sh),
-                                math.pi, 2*math.pi, 2)
-
-            key = f"{state}_{'pressed' if pressed else 'normal'}"
-            spr[key] = surf
-
-    return spr
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  Sprite de rueda dentada  (gear / configuracion)
-# ══════════════════════════════════════════════════════════════════════════════
-
-def make_gear_sprite(size, pressed=False):
-    """Boton cuadrado con icono de rueda dentada."""
-    surf = pygame.Surface((size, size))
-    surf.fill(C_BG)
-    if pressed:
-        draw_sunken(surf, (0,0,size,size), w=2)
-    else:
-        draw_raised(surf, (0,0,size,size), w=2)
-
-    off     = 1 if pressed else 0
-    cx      = size//2 + off
-    cy      = size//2 + off
-    gc      = (55, 55, 75)
-    n       = 8
-    r_body  = size//2 - 5
-    r_tip   = size//2 - 2
-    r_hub   = max(2, size//6)
-    t_angle = math.pi / n * 0.55
-
-    pygame.draw.circle(surf, gc, (cx, cy), r_body)
-
-    for i in range(n):
-        base = 2*math.pi*i/n
-        pts = [
-            (cx + r_body*math.cos(base - t_angle*1.25),
-             cy + r_body*math.sin(base - t_angle*1.25)),
-            (cx + r_tip *math.cos(base - t_angle),
-             cy + r_tip *math.sin(base - t_angle)),
-            (cx + r_tip *math.cos(base + t_angle),
-             cy + r_tip *math.sin(base + t_angle)),
-            (cx + r_body*math.cos(base + t_angle*1.25),
-             cy + r_body*math.sin(base + t_angle*1.25)),
-        ]
-        pygame.draw.polygon(surf, gc, [(int(p[0]),int(p[1])) for p in pts])
-
-    pygame.draw.circle(surf, C_BG, (cx, cy), r_hub)
-    pygame.draw.circle(surf, gc,   (cx, cy), r_hub, 1)
-
-    return surf

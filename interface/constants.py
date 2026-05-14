@@ -12,21 +12,21 @@ TITLE = "Buscaminas"
 # ----------------------------------------------
 # Medidas de layout
 # ----------------------------------------------
-CELL_SIZE    = 20    # pixeles por celda (inicial; puede cambiar con zoom)
-BORDER_OUTER = 12    # borde exterior de la ventana (px)
-BORDER_INNER = 6     # separacion entre paneles (px)
-HEADER_H     = 44    # altura total de la cabecera
-TOOLBAR_H    = 36    # barra de herramientas superior
+CELL_SIZE    = 26    # pixeles por celda (inicial; puede cambiar con zoom)
+BORDER_OUTER = 14    # borde exterior de la ventana (px)
+BORDER_INNER = 8     # separacion entre paneles (px)
+HEADER_H     = 54    # altura total de la cabecera
+TOOLBAR_H    = 44    # barra de herramientas superior
 
 # Display LCD
-LCD_DIGIT_W = 13
-LCD_DIGIT_H = 23
+LCD_DIGIT_W = 16
+LCD_DIGIT_H = 28
 LCD_DIGITS  = 3
 LCD_GAP     = 2
-LCD_PAD     = 3
+LCD_PAD     = 4
 
 # Boton de carita
-FACE_SIZE = 26
+FACE_SIZE = 36
 
 # ----------------------------------------------
 # Colores  (paleta Windows 98)
@@ -61,7 +61,7 @@ NUM_COLORS = {
 # Dificultades
 # ----------------------------------------------
 DIFFICULTIES = {
-    "novato":        {"name": "Novato",        "rows":  9, "cols":  9, "mines": 10},
+    "novato":        {"name": "Novato",        "rows":  9, "cols": 12, "mines": 10},
     "aficionado":    {"name": "Aficionado",    "rows": 16, "cols": 16, "mines": 40},
     "experimentado": {"name": "Experimentado", "rows": 16, "cols": 30, "mines": 99},
 }

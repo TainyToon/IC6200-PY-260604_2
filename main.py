@@ -23,6 +23,9 @@ def main():
     pygame.display.set_caption(TITLE)
     clock = pygame.time.Clock()
 
+    # Display temporal para que convert_alpha() funcione al cargar imagenes
+    pygame.display.set_mode((1, 1))
+
     # Iniciar directamente en el juego (dificultad Novato por defecto)
     current = GameScreen(dict(DIFFICULTIES["novato"]))
     screen  = pygame.display.set_mode(current.get_size())

@@ -1,3 +1,4 @@
+# v1778650123
 """
 Buscaminas - Pantalla de Juego
 IC6200-PY-260604_2
@@ -14,8 +15,7 @@ import time
 import math
 from interface.constants import *
 from interface.sprites import (draw_raised, draw_sunken,
-                     make_cell_sprites, make_face_sprites,
-                     make_lcd_surface)
+                     make_cell_sprites, make_lcd_surface)
 
 #Imports de archivos.
 from utils.utils import revelar_celdas_vacias
@@ -36,152 +36,17 @@ _DIFF_IDX = {DIFFICULTIES[k]["name"]: i for i, k in enumerate(DIFF_ORDER)}
 _ZOOM_IN  = "zoom_in"
 _ZOOM_OUT = "zoom_out"
 _DIFF     = "difficulty"
-_HINT     = "hint"
 _FLAG     = "flag_btn"
 _QUES     = "question_btn"
-_CHECK    = "check"
 
 _TOOLBAR_SEQ = [
-    _ZOOM_IN, _ZOOM_OUT, None,
-    _DIFF,    None,
-    _HINT, _FLAG, _QUES, None,
-    _CHECK,
+    _QUES, _DIFF, _FLAG, None,
+    _ZOOM_IN, _ZOOM_OUT,
 ]
 
 _NUM_DIFFS = 4   # 0=novato 1=aficionado 2=experimentado 3=personalizado
 
 
-def _open_custom_window():
-    """
-    Ventana de configuracion personalizada usando tkinter.
-    Funciona con cualquier version de pygame; corre en paralelo al juego.
-    """
-    import tkinter as tk
-
-    result = [None]
-
-    root = tk.Tk()
-    root.title("Configuracion personalizada")
-    root.configure(bg="#122878")
-    root.resizable(False, False)
-
-    W, H = 370, 310
-    sw = root.winfo_screenwidth()
-    sh = root.winfo_screenheight()
-    root.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
-    root.lift()
-    root.focus_force()
-
-    rows_var  = tk.IntVar(value=MIN_ROWS)
-    cols_var  = tk.IntVar(value=MIN_COLS)
-    mines_var = tk.IntVar(value=10)
-
-    def max_mines():
-        return max(1, rows_var.get() * cols_var.get() - 9)
-
-    def clamp_all():
-        rows_var.set(max(MIN_ROWS, min(MAX_ROWS, rows_var.get())))
-        cols_var.set(max(MIN_COLS, min(MAX_COLS, cols_var.get())))
-        mines_var.set(max(1, min(max_mines(), mines_var.get())))
-        lbl_max_mines.config(text=f"max {max_mines()}")
-
-    def adjust(var, lo, hi_fn, delta):
-        var.set(max(lo, min(hi_fn(), var.get() + delta)))
-        clamp_all()
-
-    BG   = "#122878"
-    FG   = "#c8dcff"
-    VFG  = "#ffffc8"
-    BTN  = "#d2d4e6"
-    BTN2 = "#506494"
-
-    # ── Titulo ────────────────────────────────────────────────────────────────
-    tk.Label(root, text="Configuracion personalizada",
-             bg=BG, fg="white", font=("Arial", 14, "bold")).pack(pady=(14, 0))
-    tk.Frame(root, bg="#6488dc", height=1).pack(fill="x", padx=20, pady=8)
-
-    # ── Filas de control ──────────────────────────────────────────────────────
-    rows_data = [
-        ("Filas",    rows_var,  MIN_ROWS, lambda: MAX_ROWS,    None),
-        ("Columnas", cols_var,  MIN_COLS, lambda: MAX_COLS,    None),
-        ("Minas",    mines_var, 1,        max_mines,           None),
-    ]
-
-    lbl_max_mines = None
-
-    for i, (label, var, lo, hi_fn, _) in enumerate(rows_data):
-        frame = tk.Frame(root, bg=BG)
-        frame.pack(pady=4)
-
-        tk.Label(frame, text=label, bg=BG, fg=FG,
-                 font=("Arial", 11, "bold"), width=8, anchor="e").pack(side="left")
-
-        tk.Button(frame, text="-", width=3, font=("Arial", 11, "bold"),
-                  bg=BTN, relief="raised",
-                  command=lambda v=var, l=lo, h=hi_fn: adjust(v, l, h, -1)
-                  ).pack(side="left", padx=4)
-
-        tk.Label(frame, textvariable=var, bg=BG, fg=VFG,
-                 font=("Arial", 14, "bold"), width=4).pack(side="left")
-
-        tk.Button(frame, text="+", width=3, font=("Arial", 11, "bold"),
-                  bg=BTN, relief="raised",
-                  command=lambda v=var, l=lo, h=hi_fn: adjust(v, l, h, +1)
-                  ).pack(side="left", padx=4)
-
-        hi_val = hi_fn() if callable(hi_fn) else hi_fn
-        hint_text = f"min {lo}  max {hi_val}"
-        hint_lbl = tk.Label(frame, text=hint_text, bg=BG, fg="#8aaada",
-                            font=("Arial", 9), width=14, anchor="w")
-        hint_lbl.pack(side="left")
-
-        if label == "Minas":
-            lbl_max_mines = hint_lbl
-
-    # Actualizar hint de minas cada vez que cambian filas o cols
-    def on_change(*_):
-        clamp_all()
-        if lbl_max_mines:
-            lbl_max_mines.config(text=f"min 1  max {max_mines()}")
-
-    rows_var.trace_add("write", on_change)
-    cols_var.trace_add("write", on_change)
-
-    tk.Frame(root, bg="#6488dc", height=1).pack(fill="x", padx=20, pady=10)
-
-    # ── Botones Iniciar / Cancelar ────────────────────────────────────────────
-    btn_frame = tk.Frame(root, bg=BG)
-    btn_frame.pack()
-
-    def on_start():
-        clamp_all()
-        result[0] = {
-            "name":  "Personalizado",
-            "rows":  rows_var.get(),
-            "cols":  cols_var.get(),
-            "mines": mines_var.get(),
-        }
-        root.destroy()
-
-    def on_cancel():
-        root.destroy()
-
-    tk.Button(btn_frame, text="Iniciar", width=12, font=("Arial", 11, "bold"),
-              bg="#4a9640", fg="white", relief="raised",
-              activebackground="#5ab050",
-              command=on_start).pack(side="left", padx=8)
-
-    tk.Button(btn_frame, text="Cancelar", width=12, font=("Arial", 11, "bold"),
-              bg="#7a2020", fg="white", relief="raised",
-              activebackground="#9a3030",
-              command=on_cancel).pack(side="left", padx=8)
-
-    root.bind("<Return>", lambda e: on_start())
-    root.bind("<Escape>", lambda e: on_cancel())
-    root.protocol("WM_DELETE_WINDOW", on_cancel)
-
-    root.mainloop()
-    return result[0]
 
 
 class GameScreen:
@@ -190,6 +55,7 @@ class GameScreen:
     _STATUS_BG  = ( 40,  40,  40)
     _STATUS_TXT = (210, 210, 210)
     _STATUS_H   = 20
+    _SB_H       = 42   # altura barra de config personalizada
 
     def __init__(self, config: dict):
         self.config = config
@@ -214,31 +80,77 @@ class GameScreen:
         self._mouse_cell = None
         self._left_held  = False
 
+        # Valores temporales de la barra de config personalizada
+        self._sb_rows  = self.rows
+        self._sb_cols  = self.cols
+        self._sb_mines = self.mines
+
         pygame.font.init()
         self._cell_spr    = make_cell_sprites(self._cell_size)
-        self._face_spr    = make_face_sprites(FACE_SIZE)
+
+        # Imágenes para los botones del toolbar
+        _img_dir = os.path.join(os.path.dirname(__file__), '..', 'img')
+        def _li(fname, size=32):
+            try:
+                img = pygame.image.load(os.path.join(_img_dir, fname)).convert_alpha()
+                return pygame.transform.smoothscale(img, (size, size))
+            except Exception:
+                return None
+
+        self._toolbar_imgs = {
+            'zoom_in':      _li('mas.png'),
+            'zoom_out':     _li('menos.png'),
+            'diff_0':       _li('principiante.png'),
+            'diff_1':       _li('avanzado.png'),
+            'diff_2':       _li('experto.png'),
+            'diff_3':       _li('personalizado.png'),
+            'flag_btn':     _li('bandera.png'),
+         
+        }
+
+        # Imagenes de bombas (se recargan en _zoom si cambia el tamaño)
+        self._img_bomba      = self._load_cell_img('bomba.png')
+        self._img_bomba_roja = self._load_cell_img('bomba-roja.png')
+
+        # Imagenes para las caras
+        self._face_img_normal  = _li('reiniciar.png',    size=FACE_SIZE)
+        self._face_img_oface   = _li('sorpresa.png', size=FACE_SIZE + 1)
+        self._face_img_dead    = _li('perdio.png',       size=FACE_SIZE)
+        self._face_img_won     = _li('social.png',       size=FACE_SIZE)
+
         self._font_status = pygame.font.SysFont("Arial", 11)
-        self._font_q      = pygame.font.SysFont("Arial", 15, bold=True)
         self._font_num    = pygame.font.Font(None, 14)
 
         self._compute_layout()
+
+    def _load_cell_img(self, fname):
+        _img_dir = os.path.join(os.path.dirname(__file__), '..', 'img')
+        try:
+            img = pygame.image.load(os.path.join(_img_dir, fname)).convert_alpha()
+            return pygame.transform.smoothscale(img, (self._cell_size, self._cell_size))
+        except Exception:
+            return None
 
     def _compute_layout(self):
         BO = BORDER_OUTER
         BI = BORDER_INNER
         CS = self._cell_size
         TH = TOOLBAR_H
+        SBH = self._SB_H if self._diff_idx == 3 else 0
         bpw = self.cols * CS
         bph = self.rows * CS
         self._win_w = BO + BI + bpw + BI + BO
-        self._win_h = TH + BO + HEADER_H + BI + bph + BI + BO + self._STATUS_H
+        self._win_h = TH + SBH + BO + HEADER_H + BI + bph + BI + BO + self._STATUS_H
         self._toolbar_rect = pygame.Rect(0, 0, self._win_w, TH)
         self._build_toolbar_rects(TH)
-        self._header_rect = pygame.Rect(BO, TH+BO, self._win_w-2*BO, HEADER_H)
-        self._board_rect  = pygame.Rect(BO, TH+BO+HEADER_H+BI,
+        # Barra de config personalizada (justo bajo el toolbar)
+        self._sb_rect = pygame.Rect(0, TH, self._win_w, SBH) if SBH else None
+        self._build_sb_rects(TH, SBH)
+        self._header_rect = pygame.Rect(BO, TH+SBH+BO, self._win_w-2*BO, HEADER_H)
+        self._board_rect  = pygame.Rect(BO, TH+SBH+BO+HEADER_H+BI,
                                         self._win_w-2*BO, bph+2*BI)
         self._grid_x = BO + BI
-        self._grid_y = TH + BO + HEADER_H + BI + BI
+        self._grid_y = TH + SBH + BO + HEADER_H + BI + BI
         hx  = self._header_rect.x + 2
         hw  = self._header_rect.w - 4
         hcy = self._header_rect.centery
@@ -253,7 +165,7 @@ class GameScreen:
                                         self._win_w, self._STATUS_H)
 
     def _build_toolbar_rects(self, TH):
-        bs=24; py=(TH-bs)//2; x=4; gap=3; sep=9
+        bs=32; py=(TH-bs)//2; x=4; gap=4; sep=11
         self._toolbar_btn_rects  = []
         self._toolbar_btn_ids    = []
         self._toolbar_separators = []
@@ -266,9 +178,37 @@ class GameScreen:
                 self._toolbar_btn_ids.append(item)
                 x += bs + gap
 
+    def _build_sb_rects(self, TH, SBH):
+        """Construye rects para filas/cols/minas y botón Aplicar en la barra."""
+        self._sb_fields   = []   # (label, attr, min, max, rect_up, rect_dn, rect_val)
+        self._sb_apply    = None
+        if not SBH:
+            return
+        cy    = TH + SBH // 2
+        bw, bh = 16, 13          # tamaño botones ▲▼
+        vw    = 30               # ancho display valor
+        lw    = 58               # ancho label
+        gap   = 10
+        fields = [
+            ("Filas",    "_sb_rows",  MIN_ROWS, MAX_ROWS),
+            ("Columnas", "_sb_cols",  MIN_COLS, MAX_COLS),
+            ("Minas",    "_sb_mines", 1,        None),
+        ]
+        x = 10
+        for label, attr, lo, hi in fields:
+            r_val = pygame.Rect(x + lw + 2, cy - bh, vw, bh * 2)
+            r_up  = pygame.Rect(x + lw + vw + 4, cy - bh, bw, bh)
+            r_dn  = pygame.Rect(x + lw + vw + 4, cy,      bw, bh)
+            self._sb_fields.append((label, attr, lo, hi, r_up, r_dn, r_val))
+            x += lw + vw + bw + gap + 6
+        # Botón Aplicar
+        abw, abh = 64, 26
+        self._sb_apply = pygame.Rect(self._win_w - abw - 10,
+                                     TH + (SBH - abh) // 2, abw, abh)
+
     def _make_board(self):
         preset = _PRESET_MAPS.get(self.mode)
-        if preset is not None:
+        if preset is not None and len(preset) == self.rows and len(preset[0]) == self.cols:
             return [[{"state": UNREVEALED, "value": preset[r][c], "hit": False}
                      for c in range(self.cols)] for r in range(self.rows)]
         return [[{"state": UNREVEALED, "value": 0, "hit": False}
@@ -300,10 +240,14 @@ class GameScreen:
         return pygame.Rect(self._grid_x+col*cs, self._grid_y+row*cs, cs, cs)
 
     def _zoom(self, delta):
-        new = max(12, min(34, self._cell_size + delta))
+        # No se puede reducir por debajo del tamaño inicial
+        min_size = CELL_SIZE
+        new = max(min_size, min(34, self._cell_size + delta))
         if new != self._cell_size:
             self._cell_size = new
-            self._cell_spr  = make_cell_sprites(self._cell_size)
+            self._cell_spr       = make_cell_sprites(self._cell_size)
+            self._img_bomba      = self._load_cell_img('bomba.png')
+            self._img_bomba_roja = self._load_cell_img('bomba-roja.png')
             self._compute_layout()
             return True
         return False
@@ -318,6 +262,24 @@ class GameScreen:
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
+            # Clicks en la barra de config personalizada
+            if self._sb_rect and self._sb_rect.collidepoint(pos):
+                for label, attr, lo, hi, r_up, r_dn, r_val in self._sb_fields:
+                    hi_val = hi if hi is not None else max(1, self._sb_rows * self._sb_cols - 9)
+                    if r_up.collidepoint(pos):
+                        setattr(self, attr, min(hi_val, getattr(self, attr) + 1))
+                        return None
+                    if r_dn.collidepoint(pos):
+                        setattr(self, attr, max(lo, getattr(self, attr) - 1))
+                        return None
+                if self._sb_apply and self._sb_apply.collidepoint(pos):
+                    cfg = {"name": "Personalizado",
+                           "rows": self._sb_rows,
+                           "cols": self._sb_cols,
+                           "mines": min(self._sb_mines,
+                                        self._sb_rows * self._sb_cols - 9)}
+                    return ("start_game", cfg)
+                return None
             for btn_r, btn_id in zip(self._toolbar_btn_rects, self._toolbar_btn_ids):
                 if not btn_r.collidepoint(pos):
                     continue
@@ -331,10 +293,9 @@ class GameScreen:
                     if new_idx < 3:
                         return ("start_game", dict(DIFFICULTIES[DIFF_ORDER[new_idx]]))
                     else:
-                        cfg = _open_custom_window()
-                        if cfg:
-                            return ("start_game", cfg)
-                        return None
+                        # Mostrar barra embebida sin abrir ventana externa
+                        self._compute_layout()
+                        return ("resize", None)
                 return None
 
             if self._face_rect.collidepoint(pos):
@@ -382,15 +343,31 @@ class GameScreen:
                 row, col = cell
                 c = self._board[row][col]
                 if c["state"] == UNREVEALED:
-                    revelar_celdas_vacias(
-                        self._board,
-                        row,
-                        col,
-                        self.rows,
-                        self.cols
-                    )
+                    if c["value"] == MINE:
+                        # Pisó una mina → game over
+                        self.game_over  = True
+                        self.game_active = False
+                        self.face_state = FACE_DEAD
+                        self._reveal_all_mines(row, col)
+                    else:
+                        revelar_celdas_vacias(
+                            self._board,
+                            row,
+                            col,
+                            self.rows,
+                            self.cols
+                        )
 
         return None
+
+    def _reveal_all_mines(self, hit_row, hit_col):
+        """Revela todas las minas al perder."""
+        for r in range(self.rows):
+            for col in range(self.cols):
+                cell = self._board[r][col]
+                if cell["value"] == MINE and cell["state"] != FLAGGED:
+                    cell["state"] = REVEALED
+                    cell["hit"]   = (r == hit_row and col == hit_col)
 
     def update(self):
         if self.game_active and not self.game_over and not self.game_won:
@@ -406,6 +383,7 @@ class GameScreen:
                              self._win_h - self._STATUS_H - TOOLBAR_H),
                     w=BORDER_OUTER // 2)
         self._draw_toolbar(screen)
+        self._draw_settings_bar(screen)
         pygame.draw.rect(screen, C_BG, self._header_rect)
         draw_sunken(screen, self._header_rect, w=2)
         self._draw_lcd(screen, self._lcd_mines_rect, self.mines - self.flags_placed)
@@ -415,6 +393,36 @@ class GameScreen:
         draw_sunken(screen, self._board_rect, w=BORDER_INNER // 2)
         self._draw_board(screen)
         self._draw_status(screen)
+
+    def _draw_settings_bar(self, screen):
+        if not self._sb_rect:
+            return
+        r = self._sb_rect
+        pygame.draw.rect(screen, (28, 28, 42), r)
+        draw_sunken(screen, tuple(r), w=1)
+        fn_lbl = pygame.font.SysFont("Courier", 10, bold=True)
+        fn_val = pygame.font.SysFont("Courier", 13, bold=True)
+        for label, attr, lo, hi, r_up, r_dn, r_val in self._sb_fields:
+            # Label
+            lx = r_val.x - 2
+            ly = r.y + 4
+            tl = fn_lbl.render(label, True, (180, 200, 255))
+            screen.blit(tl, (lx - tl.get_width(), ly))
+            # Valor
+            val = getattr(self, attr)
+            pygame.draw.rect(screen, (10, 10, 20), r_val)
+            draw_sunken(screen, tuple(r_val), w=1)
+            tv = fn_val.render(str(val), True, (255, 255, 160))
+            screen.blit(tv, tv.get_rect(center=r_val.center))
+            # Botones ▲▼
+            for btn_r, symbol in ((r_up, "^"), (r_dn, "v")):
+                draw_raised(screen, tuple(btn_r), w=1)
+                ts = fn_lbl.render(symbol, True, (200, 200, 200))
+                screen.blit(ts, ts.get_rect(center=btn_r.center))
+        # Botón Aplicar
+        draw_raised(screen, tuple(self._sb_apply), w=2)
+        ta = fn_val.render("Aplicar", True, (220, 255, 180))
+        screen.blit(ta, ta.get_rect(center=self._sb_apply.center))
 
     def _draw_toolbar(self, screen):
         TH = TOOLBAR_H
@@ -435,6 +443,19 @@ class GameScreen:
     def _draw_icon(self, screen, btn_r, btn_id, ox):
         cx = btn_r.centerx + ox
         cy = btn_r.centery + ox
+
+        # Clave de imagen según tipo de botón
+        if btn_id == _DIFF:
+            img_key = f'diff_{self._diff_idx}'
+        else:
+            img_key = btn_id
+
+        img = self._toolbar_imgs.get(img_key)
+        if img:
+            screen.blit(img, img.get_rect(center=(cx, cy)))
+            return
+
+        # Fallback procedural si no hay imagen
         if btn_id == _ZOOM_IN:
             self._ic_magnifier(screen, cx, cy, plus=True)
         elif btn_id == _ZOOM_OUT:
@@ -445,15 +466,10 @@ class GameScreen:
             elif idx == 1: self._ic_chevron(screen, cx, cy, double=True)
             elif idx == 2: self._ic_star(screen, cx, cy)
             else:          self._ic_gear(screen, cx, cy)
-        elif btn_id == _HINT:
-            self._ic_bulb(screen, cx, cy)
         elif btn_id == _FLAG:
             self._ic_flag(screen, cx, cy)
         elif btn_id == _QUES:
-            t = self._font_q.render("?", True, (40, 40, 160))
-            screen.blit(t, t.get_rect(center=(cx, cy)))
-        elif btn_id == _CHECK:
-            self._ic_check(screen, cx, cy)
+            self._ic_play(screen, cx, cy)
 
     def _ic_magnifier(self, screen, cx, cy, plus=True):
         lx, ly = cx-2, cy-2
@@ -509,12 +525,6 @@ class GameScreen:
         pygame.draw.circle(screen, C_BG, (cx, cy), r_hub)
         pygame.draw.circle(screen, gc,   (cx, cy), r_hub, 1)
 
-    def _ic_bulb(self, screen, cx, cy):
-        pygame.draw.circle(screen, (255, 230, 0), (cx, cy-2), 6)
-        pygame.draw.circle(screen, C_BLACK,       (cx, cy-2), 6, 1)
-        pygame.draw.rect(screen, (210, 210, 180), (cx-3, cy+3, 6, 5))
-        pygame.draw.rect(screen, C_BLACK,         (cx-3, cy+3, 6, 5), 1)
-        pygame.draw.line(screen, (255, 255, 150), (cx-2, cy+1), (cx+2, cy-3), 1)
 
     def _ic_flag(self, screen, cx, cy):
         px, py0, py1 = cx-2, cy-7, cy+7
@@ -524,9 +534,20 @@ class GameScreen:
         t = self._font_num.render("1", True, C_BLACK)
         screen.blit(t, (cx+4, cy))
 
-    def _ic_check(self, screen, cx, cy):
-        pygame.draw.lines(screen, (0, 140, 0), False,
-                          [(cx-7, cy+1), (cx-2, cy+6), (cx+7, cy-6)], 3)
+    def _ic_play(self, screen, cx, cy):
+        # Triangulo pixeleado apuntando a la derecha (estilo retro)
+        px   = 2                          # tamano de cada "pixel"
+        rows = [1, 2, 3, 4, 3, 2, 1]     # columnas por fila -> triangulo
+        col  = (200, 30, 30)              # rojo play
+        total_h = len(rows) * px
+        max_w   = max(rows) * px
+        ox = cx - max_w // 2
+        oy = cy - total_h // 2
+        for r, ncols in enumerate(rows):
+            for c in range(ncols):
+                pygame.draw.rect(screen, col,
+                                 (ox + c*px, oy + r*px, px, px))
+
 
     def _draw_lcd(self, screen, rect, value):
         lcd = make_lcd_surface(value)
@@ -536,9 +557,26 @@ class GameScreen:
     def _draw_face(self, screen):
         pos     = pygame.mouse.get_pos()
         pressed = self._left_held and self._face_rect.collidepoint(pos)
-        key     = f"{self.face_state}_{'pressed' if pressed else 'normal'}"
-        spr     = self._face_spr.get(key)
-        if spr: screen.blit(spr, self._face_rect.topleft)
+        # Caras con imagen PNG
+        face_img = None
+        if self.face_state == FACE_NORMAL and self._face_img_normal:
+            face_img = self._face_img_normal
+        elif self.face_state == FACE_OFACE and self._face_img_oface:
+            face_img = self._face_img_oface
+        elif self.face_state == FACE_DEAD and self._face_img_dead:
+            face_img = self._face_img_dead
+        elif self.face_state == FACE_WON and self._face_img_won:
+            face_img = self._face_img_won
+
+        if face_img:
+            if pressed:
+                draw_sunken(screen, tuple(self._face_rect), w=2)
+            else:
+                draw_raised(screen, tuple(self._face_rect), w=2)
+            off = 1 if pressed else 0
+            screen.blit(face_img,
+                        (self._face_rect.x + off, self._face_rect.y + off))
+
 
     def _draw_board(self, screen):
         hover = self._mouse_cell
@@ -552,8 +590,14 @@ class GameScreen:
         if s == FLAGGED:  return self._cell_spr["flag"]
         if s == QUESTION: return self._cell_spr["question"]
         if s == REVEALED:
-            if cell["hit"]: return self._cell_spr["mine_hit"]
-            if v == MINE:   return self._cell_spr["mine"]
+            if cell["hit"]:
+                if self._img_bomba_roja:
+                    return self._img_bomba_roja
+                return self._cell_spr["mine_hit"]
+            if v == MINE:
+                if self._img_bomba:
+                    return self._img_bomba
+                return self._cell_spr["mine"]
             if v == 0:      return self._cell_spr["revealed"]
             return self._cell_spr[str(v)]
         if self._left_held and hover==(row,col) and not self.game_over and not self.game_won:
@@ -573,5 +617,3 @@ class GameScreen:
                    f"Restantes: {fl}  Tiempo: {self._elapsed}s  |  R -> reiniciar")
         txt = self._font_status.render(msg, True, self._STATUS_TXT)
         screen.blit(txt, (5, self._status_rect.y + 4))
-
-

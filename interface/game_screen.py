@@ -1,4 +1,4 @@
-# v1778650123
+# v1778821685
 """
 Buscaminas - Pantalla de Juego
 IC6200-PY-260604_2
@@ -85,13 +85,16 @@ class GameScreen:
         self._elapsed     = 0
         self._board = self._make_board()
 
-        self._mouse_cell = None
-        self._left_held  = False
+        self._mouse_cell  = None
+        self._left_held   = False
+        self._click_mode  = 'reveal'  # 'reveal' | 'flag'
 
         # Valores temporales de la barra de config personalizada
-        self._sb_rows  = self.rows
-        self._sb_cols  = self.cols
-        self._sb_mines = self.mines
+        self._sb_rows   = self.rows
+        self._sb_cols   = self.cols
+        self._sb_mines  = self.mines
+        self._sb_focused = None  # indice del campo con foco (0,1,2)
+        self._sb_input   = ''    # texto que se esta escribiendo
 
         pygame.font.init()
         self._cell_spr    = make_cell_sprites(self._cell_size)
@@ -112,9 +115,16 @@ class GameScreen:
             'diff_1':       _li('avanzado.png'),
             'diff_2':       _li('experto.png'),
             'diff_3':       _li('personalizado.png'),
-            'flag_btn':     _li('bandera.png'),
+            'flag_btn':     _li('n.png'),
+            'flag_btn_on':  _li('bandera.png'),
          
         }
+
+        # Iconos para labels de la barra personalizada
+        self._sb_bomba_img = _li('bomba.png',   size=18)
+        self._sb_filas_img = _li('fila.png',    size=18)
+        self._sb_cols_img  = _li('columna.png', size=18)
+        self._sb_check_img = _li('check.png',   size=22)
 
         # Imagenes de bombas (se recargan en _zoom si cambia el tamaño)
         self._img_bomba      = self._load_cell_img('bomba.png')
@@ -139,26 +149,54 @@ class GameScreen:
         except Exception:
             return None
 
+    def _make_sb_icon(self, kind, size=18):
+        """Icono pixel-art para labels de la barra: 'rows' o 'cols'."""
+        surf = pygame.Surface((size, size), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, 0))
+        col  = C_BLACK
+        px   = 2          # tamaño de bloque
+        bars = 3          # numero de barras
+        gap  = 2          # separacion entre barras
+        span = 5          # bloques de largo por barra
+        total = bars * px + (bars - 1) * gap   # 10 px
+        off  = (size - total) // 2
+
+        if kind == 'rows':
+            # Barras horizontales
+            for b in range(bars):
+                y0 = off + b * (px + gap)
+                cx = (size - span * px) // 2
+                for s in range(span):
+                    pygame.draw.rect(surf, col,
+                                     (cx + s * px, y0, px, px))
+        else:
+            # Barras verticales
+            for b in range(bars):
+                x0 = off + b * (px + gap)
+                cy = (size - span * px) // 2
+                for s in range(span):
+                    pygame.draw.rect(surf, col,
+                                     (x0, cy + s * px, px, px))
+        return surf
+
     def _compute_layout(self):
         BO = BORDER_OUTER
         BI = BORDER_INNER
         CS = self._cell_size
         TH = TOOLBAR_H
-        SBH = self._SB_H if self._diff_idx == 3 else 0
         bpw = self.cols * CS
         bph = self.rows * CS
         self._win_w = BO + BI + bpw + BI + BO
-        self._win_h = TH + SBH + BO + HEADER_H + BI + bph + BI + BO + self._STATUS_H
+        self._win_h = TH + BO + HEADER_H + BI + bph + BI + BO + self._STATUS_H
         self._toolbar_rect = pygame.Rect(0, 0, self._win_w, TH)
         self._build_toolbar_rects(TH)
-        # Barra de config personalizada (justo bajo el toolbar)
-        self._sb_rect = pygame.Rect(0, TH, self._win_w, SBH) if SBH else None
-        self._build_sb_rects(TH, SBH)
-        self._header_rect = pygame.Rect(BO, TH+SBH+BO, self._win_w-2*BO, HEADER_H)
-        self._board_rect  = pygame.Rect(BO, TH+SBH+BO+HEADER_H+BI,
+        self._sb_rect = None   # controles ahora viven dentro del toolbar
+        self._build_sb_rects(TH)
+        self._header_rect = pygame.Rect(BO, TH+BO, self._win_w-2*BO, HEADER_H)
+        self._board_rect  = pygame.Rect(BO, TH+BO+HEADER_H+BI,
                                         self._win_w-2*BO, bph+2*BI)
         self._grid_x = BO + BI
-        self._grid_y = TH + SBH + BO + HEADER_H + BI + BI
+        self._grid_y = TH + BO + HEADER_H + BI + BI
         hx  = self._header_rect.x + 2
         hw  = self._header_rect.w - 4
         hcy = self._header_rect.centery
@@ -186,33 +224,31 @@ class GameScreen:
                 self._toolbar_btn_ids.append(item)
                 x += bs + gap
 
-    def _build_sb_rects(self, TH, SBH):
-        """Construye rects para filas/cols/minas y botón Aplicar en la barra."""
-        self._sb_fields   = []   # (label, attr, min, max, rect_up, rect_dn, rect_val)
-        self._sb_apply    = None
-        if not SBH:
+    def _build_sb_rects(self, TH):
+        """Construye rects de filas/cols/minas alineados a la derecha del toolbar."""
+        self._sb_fields = []
+        self._sb_apply  = None
+        if self._diff_idx != 3:
             return
-        cy    = TH + SBH // 2
-        bw, bh = 16, 13          # tamaño botones ▲▼
-        vw    = 30               # ancho display valor
-        lw    = 58               # ancho label
-        gap   = 10
+        cy   = TH // 2
+        bw, bh = 14, 11          # tamaño botones ▲▼
+        vw   = 28                # ancho display valor
+        ico  = 20                # ancho icono label
+        gap  = 8
         fields = [
-            ("Filas",    "_sb_rows",  MIN_ROWS, MAX_ROWS),
-            ("Columnas", "_sb_cols",  MIN_COLS, MAX_COLS),
             ("Minas",    "_sb_mines", 1,        None),
+            ("Columnas", "_sb_cols",  MIN_COLS, MAX_COLS),
+            ("Filas",    "_sb_rows",  MIN_ROWS, MAX_ROWS),
         ]
-        x = 10
+        # Construir de derecha a izquierda
+        x = self._win_w - 8
         for label, attr, lo, hi in fields:
-            r_val = pygame.Rect(x + lw + 2, cy - bh, vw, bh * 2)
-            r_up  = pygame.Rect(x + lw + vw + 4, cy - bh, bw, bh)
-            r_dn  = pygame.Rect(x + lw + vw + 4, cy,      bw, bh)
-            self._sb_fields.append((label, attr, lo, hi, r_up, r_dn, r_val))
-            x += lw + vw + bw + gap + 6
-        # Botón Aplicar
-        abw, abh = 64, 26
-        self._sb_apply = pygame.Rect(self._win_w - abw - 10,
-                                     TH + (SBH - abh) // 2, abw, abh)
+            r_up  = pygame.Rect(x - bw,      cy - bh, bw, bh)
+            r_dn  = pygame.Rect(x - bw,      cy,      bw, bh)
+            r_val = pygame.Rect(x - bw - vw - 2, cy - bh, vw, bh * 2)
+            r_ico = pygame.Rect(r_val.x - ico - 2, cy - ico // 2, ico, ico)
+            self._sb_fields.insert(0, (label, attr, lo, hi, r_up, r_dn, r_val, r_ico))
+            x = r_ico.x - gap
 
     def _make_board(self):
         preset = _PRESET_MAPS.get(self.mode)
@@ -269,6 +305,27 @@ class GameScreen:
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
+            # Escritura en campo de la barra personalizada
+            if self._sb_focused is not None:
+                if event.key == pygame.K_RETURN:
+                    label, attr, lo, hi, r_up, r_dn, r_val, r_ico = self._sb_fields[self._sb_focused]
+                    hi_val = hi if hi is not None else max(1, self._sb_rows * self._sb_cols - 9)
+                    try:
+                        val = max(lo, min(hi_val, int(self._sb_input)))
+                        setattr(self, attr, val)
+                    except ValueError:
+                        pass
+                    self._sb_focused = None
+                    self._sb_input   = ""
+                    return self._apply_sb()
+                elif event.key == pygame.K_ESCAPE:
+                    self._sb_focused = None
+                    self._sb_input   = ""
+                elif event.key == pygame.K_BACKSPACE:
+                    self._sb_input = self._sb_input[:-1]
+                elif event.unicode.isdigit():
+                    self._sb_input += event.unicode
+                return None
             if event.key in (pygame.K_ESCAPE, pygame.K_r):
                 self.reset()
             if event.key == pygame.K_i:
@@ -301,23 +358,21 @@ class GameScreen:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
             # Clicks en la barra de config personalizada
-            if self._sb_rect and self._sb_rect.collidepoint(pos):
-                for label, attr, lo, hi, r_up, r_dn, r_val in self._sb_fields:
+            if self._sb_fields and self._toolbar_rect.collidepoint(pos):
+                for i, (label, attr, lo, hi, r_up, r_dn, r_val, r_ico) in enumerate(self._sb_fields):
                     hi_val = hi if hi is not None else max(1, self._sb_rows * self._sb_cols - 9)
+                    if r_val.collidepoint(pos):
+                        self._sb_focused = i
+                        self._sb_input   = str(getattr(self, attr))
+                        return None
                     if r_up.collidepoint(pos):
+                        self._sb_focused = None
                         setattr(self, attr, min(hi_val, getattr(self, attr) + 1))
-                        return None
+                        return self._apply_sb()
                     if r_dn.collidepoint(pos):
+                        self._sb_focused = None
                         setattr(self, attr, max(lo, getattr(self, attr) - 1))
-                        return None
-                if self._sb_apply and self._sb_apply.collidepoint(pos):
-                    cfg = {"name": "Personalizado",
-                           "rows": self._sb_rows,
-                           "cols": self._sb_cols,
-                           "mines": min(self._sb_mines,
-                                        self._sb_rows * self._sb_cols - 9)}
-                    return ("start_game", cfg)
-                return None
+                        return self._apply_sb()
             for btn_r, btn_id in zip(self._toolbar_btn_rects, self._toolbar_btn_ids):
                 if not btn_r.collidepoint(pos):
                     continue
@@ -325,6 +380,9 @@ class GameScreen:
                     if self._zoom(+2): return ("resize", None)
                 elif btn_id == _ZOOM_OUT:
                     if self._zoom(-2): return ("resize", None)
+                elif btn_id == _FLAG:
+                    self._click_mode = 'flag' if self._click_mode == 'reveal' else 'reveal'
+                    return None
                 elif btn_id == _DIFF:
                     new_idx = (self._diff_idx + 1) % _NUM_DIFFS
                     self._diff_idx = new_idx
@@ -384,7 +442,11 @@ class GameScreen:
                 row, col = cell
                 c = self._board[row][col]
                 if c["state"] == UNREVEALED:
-                    if c["value"] == MINE:
+                    if self._click_mode == 'flag':
+                        # Modo bandera: clic izq coloca/quita bandera
+                        c["state"] = FLAGGED
+                        self.flags_placed += 1
+                    elif c["value"] == MINE:
                         # Pisó una mina → game over
                         self.game_over  = True
                         self.game_active = False
@@ -398,6 +460,14 @@ class GameScreen:
                             self.rows,
                             self.cols
                         )
+                        if self._check_win():
+                            self.game_won    = True
+                            self.game_active = False
+                            self.face_state  = FACE_WON
+                elif c["state"] == FLAGGED and self._click_mode == 'flag':
+                    # Segunda vez: quita la bandera
+                    c["state"] = UNREVEALED
+                    self.flags_placed -= 1
 
         return None
 
@@ -443,34 +513,7 @@ class GameScreen:
         self._draw_status(screen)
 
     def _draw_settings_bar(self, screen):
-        if not self._sb_rect:
-            return
-        r = self._sb_rect
-        pygame.draw.rect(screen, (28, 28, 42), r)
-        draw_sunken(screen, tuple(r), w=1)
-        fn_lbl = pygame.font.SysFont("Courier", 10, bold=True)
-        fn_val = pygame.font.SysFont("Courier", 13, bold=True)
-        for label, attr, lo, hi, r_up, r_dn, r_val in self._sb_fields:
-            # Label
-            lx = r_val.x - 2
-            ly = r.y + 4
-            tl = fn_lbl.render(label, True, (180, 200, 255))
-            screen.blit(tl, (lx - tl.get_width(), ly))
-            # Valor
-            val = getattr(self, attr)
-            pygame.draw.rect(screen, (10, 10, 20), r_val)
-            draw_sunken(screen, tuple(r_val), w=1)
-            tv = fn_val.render(str(val), True, (255, 255, 160))
-            screen.blit(tv, tv.get_rect(center=r_val.center))
-            # Botones ▲▼
-            for btn_r, symbol in ((r_up, "^"), (r_dn, "v")):
-                draw_raised(screen, tuple(btn_r), w=1)
-                ts = fn_lbl.render(symbol, True, (200, 200, 200))
-                screen.blit(ts, ts.get_rect(center=btn_r.center))
-        # Botón Aplicar
-        draw_raised(screen, tuple(self._sb_apply), w=2)
-        ta = fn_val.render("Aplicar", True, (220, 255, 180))
-        screen.blit(ta, ta.get_rect(center=self._sb_apply.center))
+        pass  # controles personalizados se dibujan dentro del toolbar
 
     def _draw_toolbar(self, screen):
         TH = TOOLBAR_H
@@ -487,6 +530,36 @@ class GameScreen:
         for sx in self._toolbar_separators:
             pygame.draw.line(screen, C_GRAY_MID, (sx,   5), (sx,   TH-5), 1)
             pygame.draw.line(screen, C_WHITE,    (sx+1, 5), (sx+1, TH-5), 1)
+        self._draw_sb_inline(screen)
+
+    def _draw_sb_inline(self, screen):
+        """Dibuja los controles de config personalizada dentro del toolbar."""
+        if not self._sb_fields:
+            return
+        fn_lbl = pygame.font.SysFont("Arial", 9,  bold=True)
+        fn_val = pygame.font.SysFont("Arial", 11, bold=True)
+        ico_map = {"Filas":    self._sb_filas_img,
+                   "Columnas": self._sb_cols_img,
+                   "Minas":    self._sb_bomba_img}
+        for i, (label, attr, lo, hi, r_up, r_dn, r_val, r_ico) in enumerate(self._sb_fields):
+            ico = ico_map.get(label)
+            if ico:
+                screen.blit(ico, ico.get_rect(center=r_ico.center))
+            else:
+                tl = fn_lbl.render(label[:3], True, C_BLACK)
+                screen.blit(tl, tl.get_rect(center=r_ico.center))
+            focused = (self._sb_focused == i)
+            bg_col  = C_WHITE if focused else C_REVEALED
+            pygame.draw.rect(screen, bg_col, r_val)
+            draw_sunken(screen, tuple(r_val), w=1)
+            txt = self._sb_input if focused else str(getattr(self, attr))
+            if focused: txt += "|"
+            tv = fn_val.render(txt, True, C_BLACK)
+            screen.blit(tv, tv.get_rect(center=r_val.center))
+            for btn_r, symbol in ((r_up, chr(0x25B2)), (r_dn, chr(0x25BC))):
+                draw_raised(screen, tuple(btn_r), w=1)
+                ts = fn_lbl.render(symbol, True, C_BLACK)
+                screen.blit(ts, ts.get_rect(center=btn_r.center))
 
     def _draw_icon(self, screen, btn_r, btn_id, ox):
         cx = btn_r.centerx + ox
@@ -498,6 +571,10 @@ class GameScreen:
         else:
             img_key = btn_id
 
+        # Botón de modo: alterna entre n.png y bandera.png
+        if btn_id == _FLAG:
+            img_key = 'flag_btn_on' if self._click_mode == 'flag' else 'flag_btn'
+        
         img = self._toolbar_imgs.get(img_key)
         if img:
             screen.blit(img, img.get_rect(center=(cx, cy)))
@@ -717,12 +794,41 @@ class GameScreen:
                     self.cols
                 )
 
+        # Verificar victoria
+        if self._check_win():
+            self.game_won    = True
+            self.game_active = False
+            self.face_state  = FACE_WON
+            return
+
         # Si no pudo hacer nada logico, danis ka decision
         if not resultado["minas"] and not resultado["seguras"]:
-            print("[IA] No hay movimientos lógicos seguros.")
-            print(f"[IA] Celdas inciertas: {len(resultado['inciertas'])}")
-            print("[IA] Presione Y para que la IA haga un movimiento aleatorio.")
-            print("[IA] Presione N para jugar manualmente.")
-
-            self.inciertas_ia = resultado["inciertas"]
+            print("[IA] No hay movimientos logicos disponibles")
+            # Obtener celdas inciertas para movimiento aleatorio
+            self.inciertas_ia = [
+                (r, c)
+                for r in range(self.rows)
+                for c in range(self.cols)
+                if self._board[r][c]["state"] == UNREVEALED
+            ]
             self.esperando_decision_usuario = True
+
+    def _apply_sb(self):
+        """Aplica la config personalizada inmediatamente."""
+        cfg = {
+            "name":  "Personalizado",
+            "rows":  self._sb_rows,
+            "cols":  self._sb_cols,
+            "mines": min(self._sb_mines,
+                         self._sb_rows * self._sb_cols - 9),
+        }
+        return ("start_game", cfg)
+
+    def _check_win(self):
+        """Verifica si el jugador ha ganado."""
+        for r in range(self.rows):
+            for c in range(self.cols):
+                cell = self._board[r][c]
+                if cell["value"] != MINE and cell["state"] != REVEALED:
+                    return False
+        return True

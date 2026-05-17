@@ -241,6 +241,7 @@ class GameScreen:
                 elif event.key == pygame.K_n:
                     print("[IA] Control manual activado.")
                     lg.esperando_decision_usuario = False
+                    lg.ia_auto = False
 
             return None
             
@@ -385,7 +386,7 @@ class GameScreen:
         if lg.esperando_decision_usuario:
             return
 
-        if lg.ia_auto and not lg.game_over and not lg.game_won:
+        if (lg.ia_auto and not lg.esperando_decision_usuario and not lg.game_over and not lg.game_won ):
 
             ahora = time.time()
 

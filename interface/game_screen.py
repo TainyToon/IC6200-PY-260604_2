@@ -260,6 +260,10 @@ class GameScreen:
             if event.key == pygame.K_i:
                 self._ia_last_cells = lg.jugar_turno_ia()
 
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                lg.ia_auto = not lg.ia_auto
+                print("[IA] Auto:", lg.ia_auto)
+
             if event.key == pygame.K_a:
                 lg.ia_auto = not lg.ia_auto
                 print("[IA] Auto:", lg.ia_auto)
@@ -315,7 +319,8 @@ class GameScreen:
                         self._compute_layout()
                         return ("resize", None)
                 elif btn_id == _QUES:
-                    self._ia_last_cells = lg.jugar_turno_ia()
+                    lg.ia_auto = not lg.ia_auto
+                    print("[IA] Auto:", lg.ia_auto)
                 return None
 
             # Carita -> reiniciar
@@ -355,7 +360,14 @@ class GameScreen:
     # ──────────────────────────────────────────────────────────────────────────
 
     def update(self):
+        import time
         self.logic.update()
+        lg = self.logic
+        if lg.ia_auto and not lg.game_over and not lg.game_won:
+            ahora = time.time()
+            if ahora - lg._ultimo_mov_ia >= 0.5:
+                self._ia_last_cells = lg.jugar_turno_ia()
+                lg._ultimo_mov_ia   = ahora
 
     # ──────────────────────────────────────────────────────────────────────────
     #  Dibujo

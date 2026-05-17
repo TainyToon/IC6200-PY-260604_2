@@ -1,165 +1,196 @@
-import random
-import itertools
+"""
+Buscaminas - IA basada en propagación de restricciones (CSP)
+IC6200-PY-260604_2
 
-from knowledge.logic import Symbol, And, Or, Not, model_check
+Reemplaza la verificación de modelos O(2^n) por propagación de restricciones O(n^2).
+
+Cada celda revelada con número genera una restricción:
+    {celdas_ocultas_vecinas}  =  k_minas_restantes
+
+Reglas de inferencia:
+  1. Si |celdas| == k  →  todas son minas        (= And de minas)
+  2. Si k == 0         →  todas son seguras       (= And de no-minas)
+  3. Si A ⊆ B         →  (B - A) tiene (kB - kA) minas
+                          (equivalente al model_check pero en tiempo polinomial)
+
+Regla 3 es la clave: permite encadenar restricciones igual que la lógica
+proposicional, sin explotar el espacio de modelos.
+"""
+
+import random
 from interface.constants import UNREVEALED, REVEALED, FLAGGED
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Restricción
+# ══════════════════════════════════════════════════════════════════════════════
+
+class Restriccion:
+    """
+    Representa: las celdas del conjunto 'cells' contienen exactamente
+    'count' minas entre ellas.
+    """
+    def __init__(self, cells, count):
+        self.cells = frozenset(cells)
+        self.count = int(count)
+
+    def __eq__(self, other):
+        return isinstance(other, Restriccion) and self.cells == other.cells and self.count == other.count
+
+    def __hash__(self):
+        return hash((self.cells, self.count))
+
+    def __repr__(self):
+        return f"{set(self.cells)} = {self.count}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  IA
+# ══════════════════════════════════════════════════════════════════════════════
 
 class LogicIA:
     def __init__(self, board, rows, cols):
         self.board = board
-        self.rows = rows
-        self.cols = cols
+        self.rows  = rows
+        self.cols  = cols
 
-        self.knowledge = And()
-        self.logs = []
+    # ──────────────────────────────────────────────────────────────────────────
+    #  Vecinos
+    # ──────────────────────────────────────────────────────────────────────────
 
-        self.celdas_seguras = set()
-        self.minas_seguras = set()
-        self.celdas_inciertas = set()
-    #esto es para printear conocimiento y no estar con puro print
-    def log(self, mensaje):
-        self.logs.append(mensaje)
-        print("[IA]", mensaje)
-
-    def simbolo(self, row, col): #Celdas las contextualizamos como variable logica
-        return Symbol(f"M_{row}_{col}") #ejem: La celda en la fila 2, columna 3 es una mina
-
-    '''
-        Busca al rededor las celdas de una posicion. 
-    '''
     def vecinos(self, row, col):
         resultado = []
-      
-        '''
-            -1  -> una posición arriba / izquierda
-            0  -> misma fila o columna
-            1  -> una posición abajo / derecha
-        '''
-
         for df in [-1, 0, 1]:
             for dc in [-1, 0, 1]:
                 if df == 0 and dc == 0:
                     continue
-
-                nr = row + df
-                nc = col + dc
-
+                nr, nc = row + df, col + dc
                 if 0 <= nr < self.rows and 0 <= nc < self.cols:
                     resultado.append((nr, nc))
-
         return resultado
 
-        '''
-            Es la que me dice cual de todas es una mina si o si, pruebas las cmbinaciones posibles para saberlo.
-        '''
-    def exactamente_k_minas(self, celdas, k):
-        simbolos = [self.simbolo(fila, col) for fila, col in celdas]
+    # ──────────────────────────────────────────────────────────────────────────
+    #  Construcción de restricciones desde el tablero
+    # ──────────────────────────────────────────────────────────────────────────
 
-        combinaciones_validas = []
-
-        for minas in itertools.combinations(simbolos, k):
-            minas = set(minas)
-            partes = []
-
-            for simbolo in simbolos:
-                if simbolo in minas:
-                    partes.append(simbolo)
-                else:
-                    partes.append(Not(simbolo))
-
-            combinaciones_validas.append(And(*partes))
-
-        if len(combinaciones_validas) == 0:
-            return And(*[Not(simbolo) for simbolo in simbolos])
-
-        return Or(*combinaciones_validas)
-
-    #Recorre todo el tablero y si encuentra celda revelada, mira sus vecionos
-    def reconstruir_conocimiento(self):
-        self.knowledge = And()
-
+    def _construir_restricciones(self):
+        restricciones = set()
         for row in range(self.rows):
             for col in range(self.cols):
                 celda = self.board[row][col]
+                if celda["state"] != REVEALED or celda["value"] <= 0:
+                    continue
 
-                if celda["state"] == REVEALED and celda["value"] > 0:
-                    ocultas = [] #Ocultas
-                    banderas = 0 #banderas en juego
+                ocultas  = []
+                banderas = 0
+                for nr, nc in self.vecinos(row, col):
+                    v = self.board[nr][nc]
+                    if v["state"] == UNREVEALED:
+                        ocultas.append((nr, nc))
+                    elif v["state"] == FLAGGED:
+                        banderas += 1
 
-                    for nr, nc in self.vecinos(row, col):
-                        vecino = self.board[nr][nc]
+                minas_restantes = celda["value"] - banderas
 
-                        if vecino["state"] == UNREVEALED:
-                            ocultas.append((nr, nc))
-                        elif vecino["state"] == FLAGGED:
-                            banderas += 1
+                if ocultas and 0 <= minas_restantes <= len(ocultas):
+                    restricciones.add(Restriccion(ocultas, minas_restantes))
 
-                    minas_restantes = celda["value"] - banderas
+        return restricciones
 
-                    if ocultas and minas_restantes >= 0:
-                        oracion = self.exactamente_k_minas(
-                            ocultas,
-                            minas_restantes
-                        )
+    # ──────────────────────────────────────────────────────────────────────────
+    #  Propagación de restricciones
+    # ──────────────────────────────────────────────────────────────────────────
 
-                        self.knowledge.add(oracion)
+    def _propagar(self, restricciones):
+        """
+        Aplica las tres reglas de inferencia en bucle hasta convergencia.
 
-                        self.log(
-                            f"Desde ({row},{col})={celda['value']} se crea oración: "
-                            f"{ocultas} tienen exactamente {minas_restantes} mina(s)."
-                        )
-    '''
-        Esta es la funcion que tomas las decisiones.
+        Regla 1: |celdas| == k  →  todas minas
+        Regla 2: k == 0         →  todas seguras
+        Regla 3: A ⊆ B          →  nueva restricción (B−A) = (kB − kA)
+        """
+        minas   = set()
+        seguras = set()
+        pendientes = set(restricciones)
 
-    '''
+        cambio = True
+        while cambio:
+            cambio = False
+            nuevas = set()
+
+            for r in list(pendientes):
+                # Actualizar restricción con lo ya conocido
+                celdas_activas = r.cells - minas - seguras
+                k = r.count - len(r.cells & minas)
+
+                if not celdas_activas:
+                    continue
+
+                # Regla 1: todas las celdas activas son minas
+                if k == len(celdas_activas):
+                    for c in celdas_activas:
+                        if c not in minas:
+                            minas.add(c)
+                            cambio = True
+                    continue
+
+                # Regla 2: ninguna celda activa es mina
+                if k == 0:
+                    for c in celdas_activas:
+                        if c not in seguras:
+                            seguras.add(c)
+                            cambio = True
+                    continue
+
+                nuevas.add(Restriccion(celdas_activas, k))
+
+            # Regla 3: inferencia por subconjuntos  A ⊆ B → (B−A) = (kB − kA)
+            lista = list(nuevas)
+            for i in range(len(lista)):
+                for j in range(len(lista)):
+                    if i == j:
+                        continue
+                    a, b = lista[i], lista[j]
+                    if a.cells and a.cells < b.cells:
+                        diff_count = b.count - a.count
+                        diff_cells = b.cells - a.cells
+                        if 0 <= diff_count <= len(diff_cells):
+                            nueva = Restriccion(diff_cells, diff_count)
+                            if nueva not in nuevas:
+                                nuevas.add(nueva)
+                                cambio = True
+
+            pendientes = nuevas
+
+        return minas, seguras
+
+    # ──────────────────────────────────────────────────────────────────────────
+    #  API pública
+    # ──────────────────────────────────────────────────────────────────────────
+
     def analizar(self):
-        self.logs.clear()
-        self.celdas_seguras.clear()
-        self.minas_seguras.clear()
-        self.celdas_inciertas.clear()
+        restricciones = self._construir_restricciones()
+        minas, seguras = self._propagar(restricciones)
 
-        self.reconstruir_conocimiento()
+        todas_ocultas = {
+            (r, c)
+            for r in range(self.rows)
+            for c in range(self.cols)
+            if self.board[r][c]["state"] == UNREVEALED
+        }
+        inciertas = todas_ocultas - minas - seguras
 
-        for row in range(self.rows):
-            for col in range(self.cols):
-                celda = self.board[row][col]
-
-                if celda["state"] == UNREVEALED:
-                    simbolo = self.simbolo(row, col)
-
-                    es_mina = model_check(self.knowledge, simbolo)
-                    es_segura = model_check(self.knowledge, Not(simbolo))
-
-                    if es_mina:
-                        self.minas_seguras.add((row, col))
-                        self.log(f"Se deduce que ({row},{col}) es mina.")
-
-                    elif es_segura:
-                        self.celdas_seguras.add((row, col))
-                        self.log(f"Se deduce que ({row},{col}) es segura.")
-
-                    else:
-                        self.celdas_inciertas.add((row, col))
-
-        self.log(f"Celdas seguras identificadas: {len(self.celdas_seguras)}")
-        self.log(f"Minas correctamente marcables: {len(self.minas_seguras)}")
-        self.log(f"Celdas inciertas: {len(self.celdas_inciertas)}")
+        print(f"[IA] Seguras: {len(seguras)}  Minas: {len(minas)}  Inciertas: {len(inciertas)}")
 
         return {
-            "seguras": list(self.celdas_seguras),
-            "minas": list(self.minas_seguras),
-            "inciertas": list(self.celdas_inciertas),
-            "logs": self.logs
+            "seguras":   list(seguras),
+            "minas":     list(minas),
+            "inciertas": list(inciertas),
+            "logs":      [],
         }
-    #Entonces escoge una celda aleatoria por que no tiene contexto
+
     def primer_movimiento(self):
         row = random.randint(0, self.rows - 1)
         col = random.randint(0, self.cols - 1)
-
-        self.log(
-            f"Primer movimiento aleatorio en ({row},{col}) "
-            f"porque no existe conocimiento inicial."
-        )
-
+        print(f"[IA] Primer movimiento aleatorio en ({row},{col})")
         return (row, col)

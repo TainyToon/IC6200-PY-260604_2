@@ -115,11 +115,7 @@ class GameLogic:
             if self._start_time is not None:
                 self.elapsed = min(999, int(time.time() - self._start_time))
 
-        if self.ia_auto and not self.game_over and not self.game_won:
-            ahora = time.time()
-            if ahora - self._ultimo_mov_ia >= 0.5:
-                self.jugar_turno_ia()
-                self._ultimo_mov_ia = ahora
+        # El bucle auto-IA lo gestiona GameScreen para capturar el highlight
 
     # ──────────────────────────────────────────────────────────────────────────
     #  Acciones del jugador

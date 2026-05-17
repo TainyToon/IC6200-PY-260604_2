@@ -13,6 +13,7 @@ Sin dependencias de pygame. Maneja:
 import os
 import sys
 import time
+import random
 
 from interface.constants import (
     UNREVEALED, REVEALED, FLAGGED, QUESTION, MINE,
@@ -251,10 +252,13 @@ class GameLogic:
             self.game_won    = True
             self.game_active = False
             self.face_state  = FACE_WON
+            self.esperando_decision_usuario = False
             return tocadas
 
         if not resultado["minas"] and not resultado["seguras"]:
             print("[IA] No hay movimientos logicos disponibles")
+            print("[IA] Presiona Y para movimiento aleatorio")
+            print("[IA] Presiona N para control manual")
             self.inciertas_ia = [
                 (r, c)
                 for r in range(self.rows)
@@ -270,10 +274,25 @@ class GameLogic:
         tocadas = set()
         if not self.inciertas_ia:
             return tocadas
-        import random
+        
         row, col = random.choice(self.inciertas_ia)
         print(f"[IA] Movimiento aleatorio en ({row}, {col})")
         tocadas.add((row, col))
+        cell = self.board[row][col]
+        #Si la IA toca Bomba
+        if cell["value"] == MINE:
+             print("[IA] La IA ha tocado una mina")
+             self.game_over = True
+             self.game_active = False
+             self.face_state = FACE_DEAD
+             self.esperando_decision_usuario = False
+             self._reveal_all_mines(row,col)
+             return tocadas
+        #Movimisntos seguros
         revelar_celdas_vacias(self.board, row, col, self.rows, self.cols)
-        self.esperando_decision_usuario = False
+        if self._check_win():
+            self.game_won = True
+            self.game_active = False
+            self.face_state = FACE_WON
+        self.esperando_decision_usuario = False    
         return tocadas

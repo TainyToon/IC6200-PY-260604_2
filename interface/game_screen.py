@@ -228,6 +228,22 @@ class GameScreen:
 
     def handle_event(self, event):
         lg = self.logic
+        # Bloquear interaccion mientras IA espera decision
+        if lg.esperando_decision_usuario:
+
+            if event.type == pygame.KEYDOWN:
+
+                if event.key == pygame.K_y:
+                    print("[IA] Movimiento aleatorio...")
+                    self._ia_last_cells = lg.ia_movimiento_aleatorio()
+                    lg.esperando_decision_usuario = False
+
+                elif event.key == pygame.K_n:
+                    print("[IA] Control manual activado.")
+                    lg.esperando_decision_usuario = False
+
+            return None
+            
 
         # ── Teclado ──────────────────────────────────────────────────────────
         if event.type == pygame.KEYDOWN:
@@ -361,13 +377,21 @@ class GameScreen:
 
     def update(self):
         import time
+
         self.logic.update()
         lg = self.logic
+
+        # Detenemos IA mientras espera respuesta
+        if lg.esperando_decision_usuario:
+            return
+
         if lg.ia_auto and not lg.game_over and not lg.game_won:
+
             ahora = time.time()
+
             if ahora - lg._ultimo_mov_ia >= 0.5:
                 self._ia_last_cells = lg.jugar_turno_ia()
-                lg._ultimo_mov_ia   = ahora
+                lg._ultimo_mov_ia = ahora
 
     # ──────────────────────────────────────────────────────────────────────────
     #  Dibujo

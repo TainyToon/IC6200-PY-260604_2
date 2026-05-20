@@ -7,7 +7,6 @@ No se requieren archivos de imagen externos.
 """
 
 import pygame
-import math
 from interface.constants import *
 
 
@@ -141,9 +140,10 @@ def _draw_flag_icon(surf, size):
 
 
 
-def make_cell_sprites(size):
+def make_cell_sprites(size, flag_img=None):
     """
     Claves: 'unrevealed', 'revealed', '1'..'8', 'flag', 'question'
+    flag_img: superficie pygame ya escalada al tamaño deseado (opcional).
     """
     # ── Patrones pixel-art 3×5 para dígitos 1-8 ──────────────────────────────
     _PX = {
@@ -182,7 +182,11 @@ def make_cell_sprites(size):
         spr[str(n)] = s
 
     s = _make_raised_cell(size)
-    _draw_flag_icon(s, size)
+    if flag_img is not None:
+        scaled = pygame.transform.smoothscale(flag_img, (size, size))
+        s.blit(scaled, scaled.get_rect(center=(size // 2, size // 2)))
+    else:
+        _draw_flag_icon(s, size)
     spr["flag"] = s
 
     s = _make_raised_cell(size)

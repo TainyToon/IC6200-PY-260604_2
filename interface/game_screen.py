@@ -1,12 +1,3 @@
-# v2_logic_separated
-"""
-Buscaminas - Pantalla de Juego
-IC6200-PY-260604_2
-
-GameScreen solo maneja dibujo, layout y eventos de pygame.
-Toda la logica del juego vive en knowledge/game_logic.py (GameLogic).
-"""
-
 import os
 import math
 import pygame
@@ -25,7 +16,6 @@ _TOOLBAR_SEQ = [_QUES, _DIFF, _FLAG, None, _ZOOM_IN, _ZOOM_OUT]
 _NUM_DIFFS   = 4   # 0=novato 1=aficionado 2=experimentado 3=personalizado
 
 _DIFF_IDX = {DIFFICULTIES[k]["name"]: i for i, k in enumerate(DIFF_ORDER)}
-
 
 class GameScreen:
     """Pantalla de juego: solo rendering, layout y captura de eventos."""
@@ -47,8 +37,9 @@ class GameScreen:
         self._cell_size  = CELL_SIZE
         self._click_mode = 'reveal'   # 'reveal' | 'flag'
         self._mouse_cell = None
-        self._left_held  = False
-        self._ia_last_cells = set()
+        self._left_held      = False
+        self._ia_last_cells  = set()
+        self._ia_manual_mode = False
 
         # Config personalizada (toolbar inline)
         self._sb_rows    = config["rows"]
@@ -58,7 +49,6 @@ class GameScreen:
         self._sb_input   = ''
 
         pygame.font.init()
-        self._cell_spr = make_cell_sprites(self._cell_size)
 
         _img_dir = os.path.join(os.path.dirname(__file__), '..', 'img')
         def _li(fname, size=32):
@@ -67,6 +57,15 @@ class GameScreen:
                 return pygame.transform.smoothscale(img, (size, size))
             except Exception:
                 return None
+
+        # Imagen de bandera para celdas (se carga una vez, sin escalar aún)
+        try:
+            self._flag_src = pygame.image.load(
+                os.path.join(_img_dir, 'banderin.png')).convert_alpha()
+        except Exception:
+            self._flag_src = None
+
+        self._cell_spr = make_cell_sprites(self._cell_size, self._flag_src)
 
         self._toolbar_imgs = {
             'zoom_in':     _li('mas.png'),
@@ -136,6 +135,19 @@ class GameScreen:
                                       hcy - FACE_SIZE//2, FACE_SIZE, FACE_SIZE)
         self._status_rect = pygame.Rect(0, self._win_h - self._STATUS_H,
                                         self._win_w, self._STATUS_H)
+        self._build_ia_dialog_rects()
+
+    def _build_ia_dialog_rects(self):
+        dw, dh = 270, 130
+        dx = (self._win_w - dw) // 2
+        dy = (self._win_h - dh) // 2
+        self._ia_dialog_rect = pygame.Rect(dx, dy, dw, dh)
+        bw, bh = 112, 26
+        gap = 10
+        bx = dx + (dw - bw * 2 - gap) // 2
+        by = dy + dh - bh - 12
+        self._ia_btn_aleatorio = pygame.Rect(bx,            by, bw, bh)
+        self._ia_btn_manual    = pygame.Rect(bx + bw + gap, by, bw, bh)
 
     def _build_toolbar_rects(self, TH):
         bs = 32; py = (TH - bs) // 2; x = 4; gap = 4; sep = 11
@@ -201,7 +213,7 @@ class GameScreen:
         new = max(CELL_SIZE, min(34, self._cell_size + delta))
         if new != self._cell_size:
             self._cell_size      = new
-            self._cell_spr       = make_cell_sprites(new)
+            self._cell_spr       = make_cell_sprites(new, self._flag_src)
             self._img_bomba      = self._load_cell_img('bomba.png')
             self._img_bomba_roja = self._load_cell_img('bomba-roja.png')
             self._compute_layout()
@@ -218,9 +230,10 @@ class GameScreen:
         return ("start_game", cfg)
 
     def _reset_ui(self):
-        self._left_held     = False
-        self._mouse_cell    = None
-        self._ia_last_cells = set()
+        self._left_held      = False
+        self._mouse_cell     = None
+        self._ia_last_cells  = set()
+        self._ia_manual_mode = False
 
     # ──────────────────────────────────────────────────────────────────────────
     #  Eventos
@@ -228,23 +241,20 @@ class GameScreen:
 
     def handle_event(self, event):
         lg = self.logic
-        # Bloquear interaccion mientras IA espera decision
+
+        # Dialogo IA: solo responder a los botones del popup
         if lg.esperando_decision_usuario:
-
-            if event.type == pygame.KEYDOWN:
-
-                if event.key == pygame.K_y:
-                    print("[IA] Movimiento aleatorio...")
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                pos = event.pos
+                if self._ia_btn_aleatorio.collidepoint(pos):
                     self._ia_last_cells = lg.ia_movimiento_aleatorio()
+                elif self._ia_btn_manual.collidepoint(pos):
                     lg.esperando_decision_usuario = False
-
-                elif event.key == pygame.K_n:
-                    print("[IA] Control manual activado.")
-                    lg.esperando_decision_usuario = False
+                    self._ia_manual_mode = True
                     lg.ia_auto = False
-
             return None
-            
+
+
 
         # ── Teclado ──────────────────────────────────────────────────────────
         if event.type == pygame.KEYDOWN:
@@ -274,23 +284,9 @@ class GameScreen:
                 lg.reset()
                 self._reset_ui()
 
-            if event.key == pygame.K_i:
-                self._ia_last_cells = lg.jugar_turno_ia()
-
             if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 lg.ia_auto = not lg.ia_auto
                 print("[IA] Auto:", lg.ia_auto)
-
-            if event.key == pygame.K_a:
-                lg.ia_auto = not lg.ia_auto
-                print("[IA] Auto:", lg.ia_auto)
-
-            if lg.esperando_decision_usuario:
-                if event.key == pygame.K_y:
-                    self._ia_last_cells = lg.ia_movimiento_aleatorio()
-                elif event.key == pygame.K_n:
-                    print("[IA] Control entregado al usuario.")
-                    lg.esperando_decision_usuario = False
 
         # ── Movimiento raton ──────────────────────────────────────────────────
         if event.type == pygame.MOUSEMOTION:
@@ -361,14 +357,26 @@ class GameScreen:
 
         # ── Clic izquierdo UP -> accion principal ─────────────────────────────
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            was_held = self._left_held   # True solo si DOWN fue sobre el tablero
             self._left_held = False
             lg.release_cell()
             cell = self._pixel_to_cell(*event.pos)
             if cell and not lg.game_over and not lg.game_won:
-                if self._click_mode == 'flag':
-                    lg.place_flag(*cell)
-                else:
+                if self._ia_manual_mode and was_held:
+                    # El usuario elige una casilla; despues la IA reintenta
+                    import time
                     lg.reveal_cell(*cell)
+                    self._ia_manual_mode = False
+                    self._ia_last_cells  = set()
+                    if not lg.game_over and not lg.game_won:
+                        lg.ia_auto = True
+                        self._ia_last_cells = lg.jugar_turno_ia()
+                        lg._ultimo_mov_ia   = time.time()
+                elif not self._ia_manual_mode:
+                    if self._click_mode == 'flag':
+                        lg.place_flag(*cell)
+                    else:
+                        lg.reveal_cell(*cell)
 
         return None
 
@@ -382,11 +390,11 @@ class GameScreen:
         self.logic.update()
         lg = self.logic
 
-        # Detenemos IA mientras espera respuesta
-        if lg.esperando_decision_usuario:
+        # Detenemos IA mientras espera respuesta o usuario marca manual
+        if lg.esperando_decision_usuario or self._ia_manual_mode:
             return
 
-        if (lg.ia_auto and not lg.esperando_decision_usuario and not lg.game_over and not lg.game_won ):
+        if lg.ia_auto and not lg.game_over and not lg.game_won:
 
             ahora = time.time()
 
@@ -414,6 +422,8 @@ class GameScreen:
         draw_sunken(screen, self._board_rect, w=BORDER_INNER // 2)
         self._draw_board(screen)
         self._draw_status(screen)
+        if self.logic.esperando_decision_usuario:
+            self._draw_ia_dialog(screen)
 
     def _draw_toolbar(self, screen):
         TH = TOOLBAR_H
@@ -603,6 +613,49 @@ class GameScreen:
             return self._cell_spr["revealed"]
         return self._cell_spr["unrevealed"]
 
+    def _draw_ia_dialog(self, screen):
+        """Dialogo estilo Windows 98 cuando la IA no tiene movimientos logicos."""
+        dr  = self._ia_dialog_rect
+        fn_title = pygame.font.SysFont("Arial", 11, bold=True)
+        fn_body  = pygame.font.SysFont("Arial", 11)
+        fn_btn   = pygame.font.SysFont("Arial", 11)
+
+        # Sombra
+        sombra = pygame.Rect(dr.x + 4, dr.y + 4, dr.w, dr.h)
+        pygame.draw.rect(screen, (80, 80, 80), sombra)
+
+        # Fondo del dialogo
+        pygame.draw.rect(screen, C_BG, dr)
+        draw_raised(screen, tuple(dr), w=2)
+
+        # Barra de titulo (azul Windows 98)
+        title_h = 20
+        title_r = pygame.Rect(dr.x + 2, dr.y + 2, dr.w - 4, title_h)
+        pygame.draw.rect(screen, (0, 0, 128), title_r)
+        t = fn_title.render("[IA]  Decisión requerida", True, C_WHITE)
+        screen.blit(t, (title_r.x + 4, title_r.y + (title_h - t.get_height()) // 2))
+
+        # Mensaje
+        msg1 = fn_body.render("No hay movimientos lógicos disponibles.", True, C_BLACK)
+        msg2 = fn_body.render("¿Qué deseas hacer?", True, C_BLACK)
+        cx   = dr.centerx
+        y0   = dr.y + title_h + 14
+        screen.blit(msg1, msg1.get_rect(centerx=cx, top=y0))
+        screen.blit(msg2, msg2.get_rect(centerx=cx, top=y0 + msg1.get_height() + 4))
+
+        # Botones
+        mpos = pygame.mouse.get_pos()
+        for btn_r, label in (
+            (self._ia_btn_aleatorio, "Mov. aleatorio"),
+            (self._ia_btn_manual,    "Marcar casilla"),
+        ):
+            hover = btn_r.collidepoint(mpos)
+            if hover: draw_sunken(screen, tuple(btn_r), w=2)
+            else:     draw_raised(screen, tuple(btn_r), w=2)
+            pygame.draw.rect(screen, C_BG, btn_r.inflate(-4, -4))
+            tb = fn_btn.render(label, True, C_BLACK)
+            screen.blit(tb, tb.get_rect(center=btn_r.center))
+
     def _draw_status(self, screen):
         lg = self.logic
         pygame.draw.rect(screen, self._STATUS_BG, self._status_rect)
@@ -610,6 +663,8 @@ class GameScreen:
             msg = "Ganaste!  R -> reiniciar"
         elif lg.game_over:
             msg = "Perdiste!  R -> reiniciar"
+        elif self._ia_manual_mode:
+            msg = "Modo manual: haz clic en una casilla para revelarla"
         else:
             fl  = lg.mines - lg.flags_placed
             msg = (f"{lg.mode}  |  {lg.cols}x{lg.rows}  |  "

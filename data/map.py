@@ -1,15 +1,3 @@
-"""
-Buscaminas – Mapas predefinidos
-data/map.py
-
-Cada matriz almacena los valores subyacentes del tablero:
-   0  →  mina
-    0  →  celda vacía (sin minas adyacentes)
-   0-8 →  cantidad de minas en las 8 celdas vecinas
-
-Estos mapas se usan como estado inicial del juego para cada dificultad.
-La lógica de revelado, banderas y victoria se maneja en game_screen.py.
-"""
 
 NOVATO = [   # 9x9
     [0, 0, 0, 0, 0, 0, 0, 0, 0],

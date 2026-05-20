@@ -1,22 +1,3 @@
-"""
-Buscaminas - IA basada en propagación de restricciones (CSP)
-IC6200-PY-260604_2
-
-Reemplaza la verificación de modelos O(2^n) por propagación de restricciones O(n^2).
-
-Cada celda revelada con número genera una restricción:
-    {celdas_ocultas_vecinas}  =  k_minas_restantes
-
-Reglas de inferencia:
-  1. Si |celdas| == k  →  todas son minas        (= And de minas)
-  2. Si k == 0         →  todas son seguras       (= And de no-minas)
-  3. Si A ⊆ B         →  (B - A) tiene (kB - kA) minas
-                          (equivalente al model_check pero en tiempo polinomial)
-
-Regla 3 es la clave: permite encadenar restricciones igual que la lógica
-proposicional, sin explotar el espacio de modelos.
-"""
-
 import random
 from interface.constants import UNREVEALED, REVEALED, FLAGGED
 

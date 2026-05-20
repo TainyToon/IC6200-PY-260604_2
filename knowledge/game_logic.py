@@ -1,60 +1,23 @@
-"""
-Buscaminas - Lógica pura del juego
-IC6200-PY-260604_2
-
-Sin dependencias de pygame. Maneja:
-  - Estado del tablero
-  - Generación de minas
-  - Revelar celdas / colocar banderas
-  - Detección de victoria y derrota
-  - Turno de la IA
-"""
-
-import os
-import sys
 import time
 import random
 
 from interface.constants import (
     UNREVEALED, REVEALED, FLAGGED, QUESTION, MINE,
     FACE_NORMAL, FACE_OFACE, FACE_DEAD, FACE_WON,
-    MIN_ROWS, MAX_ROWS, MIN_COLS, MAX_COLS,
 )
-from data.bombas import Bombas
-from data.lugares_bomba import LugaresBomba
-from utils.utils import revelar_celdas_vacias, ia_movimiento_random
+from utils.bombas import Bombas
+from utils.lugares_bomba import LugaresBomba
+from utils.utils import revelar_celdas_vacias
 from knowledge.logic_ia import LogicIA
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'data'))
-from data.map import NOVATO, AFICIONADO, EXPERIMENTADO
-
-_PRESET_MAPS = {
-    "Novato":        NOVATO,
-    "Aficionado":    AFICIONADO,
-    "Experimentado": EXPERIMENTADO,
-}
-
-
 class GameLogic:
-    """
-    Toda la lógica del juego, sin pygame.
-
-    Atributos públicos que GameScreen puede leer:
-        board            — tablero 2D de dicts {state, value, hit}
-        rows, cols, mines, mode
-        game_active, game_over, game_won
-        face_state       — FACE_NORMAL | FACE_OFACE | FACE_DEAD | FACE_WON
-        flags_placed
-        elapsed          — segundos transcurridos (int)
-        esperando_decision_usuario
-        inciertas_ia     — lista de (row, col) inciertas para movimiento aleatorio
-    """
 
     def __init__(self, config: dict):
-        self.rows  = config["rows"]
-        self.cols  = config["cols"]
-        self.mines = config["mines"]
-        self.mode  = config["name"]
+        self.rows   = config["rows"]
+        self.cols   = config["cols"]
+        self.mines  = config["mines"]
+        self.mode   = config["name"]
+        self.preset = config.get("preset")   # mapa predefinido o None
 
         self.board            = self._make_board()
         self.game_active      = False
@@ -71,34 +34,38 @@ class GameLogic:
         self.esperando_decision_usuario = False
         self.inciertas_ia               = []
 
-    # ──────────────────────────────────────────────────────────────────────────
+    # -----------------------------------------
     #  Tablero
-    # ──────────────────────────────────────────────────────────────────────────
+    # -----------------------------------------
 
     def _make_board(self):
-        preset = _PRESET_MAPS.get(self.mode)
-        if preset is not None and len(preset) == self.rows and len(preset[0]) == self.cols:
-            return [[{"state": UNREVEALED, "value": preset[r][c], "hit": False}
-                     for c in range(self.cols)] for r in range(self.rows)]
-        return [[{"state": UNREVEALED, "value": 0, "hit": False}
-                 for _ in range(self.cols)] for _ in range(self.rows)]
+        preset = self.preset
 
-    def reset(self):
-        self.board            = self._make_board()
-        self.game_active      = False
-        self.game_over        = False
-        self.game_won         = False
-        self.face_state       = FACE_NORMAL
-        self.flags_placed     = 0
-        self._start_time      = None
-        self.elapsed          = 0
-        self.bombas_generadas = False
-        self.esperando_decision_usuario = False
-        self.inciertas_ia     = []
+        usar_preset = (
+            preset is not None and
+            len(preset) == self.rows and
+            len(preset[0]) == self.cols
+        )
 
-    # ──────────────────────────────────────────────────────────────────────────
+        tablero = []
+        for r in range(self.rows):
+            fila = []
+            for c in range(self.cols):
+                valor = preset[r][c] if usar_preset else 0
+
+                celda = {
+                    "state": UNREVEALED,
+                    "value": valor,
+                    "hit":   False
+                }
+                fila.append(celda)
+            tablero.append(fila)
+
+        return tablero
+
+    # -----------------------------------------
     #  Generación de minas
-    # ──────────────────────────────────────────────────────────────────────────
+    # -----------------------------------------
 
     def _generate_mines(self, safe_cell):
         generador  = Bombas(self.rows, self.cols, self.mines)
@@ -106,9 +73,9 @@ class GameLogic:
         LugaresBomba.colocar_numeros(self.board, ubicaciones)
         self.bombas_generadas = True
 
-    # ──────────────────────────────────────────────────────────────────────────
+    # -----------------------------------------
     #  Actualización de tiempo
-    # ──────────────────────────────────────────────────────────────────────────
+    # -----------------------------------------
 
     def update(self):
         """Debe llamarse cada frame desde GameScreen."""
@@ -118,9 +85,9 @@ class GameLogic:
 
         # El bucle auto-IA lo gestiona GameScreen para capturar el highlight
 
-    # ──────────────────────────────────────────────────────────────────────────
+    # -----------------------------------------
     #  Acciones del jugador
-    # ──────────────────────────────────────────────────────────────────────────
+    # -----------------------------------------
 
     def press_cell(self, row, col):
         """MOUSEBUTTONDOWN sobre una celda: activa FACE_OFACE si está sin revelar."""
@@ -189,9 +156,9 @@ class GameLogic:
         if self.face_state == FACE_OFACE:
             self.face_state = FACE_NORMAL
 
-    # ──────────────────────────────────────────────────────────────────────────
+    # -----------------------------------------
     #  Victoria / derrota
-    # ──────────────────────────────────────────────────────────────────────────
+    # -----------------------------------------
 
     def _check_win(self) -> bool:
         for r in range(self.rows):
@@ -209,16 +176,16 @@ class GameLogic:
                     cell["state"] = REVEALED
                     cell["hit"]   = (r == hit_row and c == hit_col)
 
-    # ──────────────────────────────────────────────────────────────────────────
+    # -----------------------------------------
     #  IA
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def jugar_turno_ia(self) -> set:
-        """
+    # -----------------------------------------
+    """
         Ejecuta un turno de la IA.
         Devuelve el set de celdas (row, col) que la IA tocó,
         para que GameScreen pueda resaltarlas visualmente.
-        """
+    """
+    def jugar_turno_ia(self) -> set:
+        
         ia = LogicIA(self.board, self.rows, self.cols)
         tocadas = set()
 
@@ -296,3 +263,22 @@ class GameLogic:
             self.face_state = FACE_WON
         self.esperando_decision_usuario = False    
         return tocadas
+    
+    # -----------------------------------------
+    #  RESET
+    # -----------------------------------------
+
+    def reset(self):
+        self.board            = self._make_board()
+        self.game_active      = False
+        self.game_over        = False
+        self.game_won         = False
+        self.face_state       = FACE_NORMAL
+        self.flags_placed     = 0
+        self._start_time      = None
+        self.elapsed          = 0
+        self.bombas_generadas           = False
+        self.ia_auto                    = False
+        self.esperando_decision_usuario = False
+        self.inciertas_ia               = []
+

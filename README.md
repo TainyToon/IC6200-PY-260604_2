@@ -20,6 +20,9 @@ A = “La celda A contiene una mina”
 El problema es que Buscaminas no trabaja únicamente con afirmaciones individuales, sino con restricciones numéricas. Por ejemplo, cuando una celda revela el número 1, realmente está indicando:
 “Exactamente una de las celdas vecinas contiene una mina”
 
+Al tratar de integrar logic.py en la IA y usar Symbol para representar cada celda, construir una base de conocimiento con And/Or, 
+y hacer inferencias con model_check, se da un problema que es una complejidad O(2ⁿ) y congela el juego con tableros medianos. Funcionaría solo en Novato con pocas celdas ocultas.
+
 Y ese tipo de acciones no las tiene nuestro logic.py y se debe implementar funciones nuevas que permitan poder inferir este tipo de concluciones por lo que se creo la clase "LogicIA"
 
 Proposito de logic_ia

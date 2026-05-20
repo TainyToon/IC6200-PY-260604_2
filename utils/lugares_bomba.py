@@ -1,6 +1,5 @@
 from interface.constants import MINE
 
-
 class LugaresBomba:
     @staticmethod
     def colocar_numeros(tablero, bombas):

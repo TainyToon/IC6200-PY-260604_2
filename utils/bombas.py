@@ -1,6 +1,4 @@
 import random
-from interface.constants import MINE
-
 
 class Bombas:
     historial_ubicaciones = set()  #Hatsa que se cierre el prhgrama se limpia memoria

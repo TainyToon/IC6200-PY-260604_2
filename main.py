@@ -1,17 +1,3 @@
-"""
-Buscaminas - Punto de Entrada
-IC6200-PY-260604_2
-
-Controles:
-    Click izquierdo  - revelar celda
-    Click derecho    - bandera / interrogacion / sin marcar
-    Click en carita  - reiniciar
-    R                - reiniciar
-    ESC              - reiniciar
-    Toolbar zoom+/-  - ajustar tamanio de celdas
-    Toolbar [^/^^/*] - cambiar dificultad
-"""
-
 import sys
 import pygame
 from interface.constants import FPS, TITLE, DIFFICULTIES

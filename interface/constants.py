@@ -1,13 +1,10 @@
-"""
-Buscaminas - Constantes globales
-IC6200-PY-260604_2
-"""
+from data.map import NOVATO, AFICIONADO, EXPERIMENTADO
 
 # ----------------------------------------------
 # Pantalla / ventana
 # ----------------------------------------------
 FPS   = 60
-TITLE = "Buscaminas"
+TITLE = "BUSCAMINAS"
 
 # ----------------------------------------------
 # Medidas de layout
@@ -61,9 +58,9 @@ NUM_COLORS = {
 # Dificultades
 # ----------------------------------------------
 DIFFICULTIES = {
-    "novato":        {"name": "Novato",        "rows":  9, "cols": 12, "mines": 10},
-    "aficionado":    {"name": "Aficionado",    "rows": 16, "cols": 16, "mines": 40},
-    "experimentado": {"name": "Experimentado", "rows": 16, "cols": 30, "mines": 99},
+    "novato":        {"name": "Novato",        "preset": NOVATO,        "rows":  9, "cols": 12, "mines": 10},
+    "aficionado":    {"name": "Aficionado",    "preset": AFICIONADO,    "rows": 16, "cols": 16, "mines": 40},
+    "experimentado": {"name": "Experimentado", "preset": EXPERIMENTADO, "rows": 16, "cols": 30, "mines": 99},
 }
 DIFF_ORDER = ["novato", "aficionado", "experimentado"]
 

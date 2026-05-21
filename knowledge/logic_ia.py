@@ -1,43 +1,79 @@
 import random
 from interface.constants import UNREVEALED, REVEALED, FLAGGED
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  Restricción
-# ══════════════════════════════════════════════════════════════════════════════
-
-class Restriccion:
+class Sentence:
     """
-    Representa: las celdas del conjunto 'cells' contienen exactamente
-    'count' minas entre ellas.
+    Logical statement about a Minesweeper game
+    A sentence consists of a set of board cells,
+    and a count of the number of those cells which are mines.
     """
+
     def __init__(self, cells, count):
-        self.cells = frozenset(cells)
+        self.cells = set(cells)
         self.count = int(count)
 
     def __eq__(self, other):
-        return isinstance(other, Restriccion) and self.cells == other.cells and self.count == other.count
+        return isinstance(other, Sentence) and \
+               self.cells == other.cells and self.count == other.count
 
-    def __hash__(self):
-        return hash((self.cells, self.count))
+    def __str__(self):
+        return f"{self.cells} = {self.count}"
 
-    def __repr__(self):
-        return f"{set(self.cells)} = {self.count}"
+    """
+    ---- Regla 1-----------------------------------------------------------------
 
+    Returns the set of all cells in self.cells known to be mines.
+    Example: {A, B, C} = 3  →  {A, B, C}
+    """
+    def known_mines(self):
+        if self.count > 0 and len(self.cells) == self.count:
+            return set(self.cells)
+        return set()
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  IA
-# ══════════════════════════════════════════════════════════════════════════════
+    """
+    ---- Regla 2-----------------------------------------------------------------
+
+    Returns the set of all cells in self.cells known to be safe.
+    Example: {A, B, C} = 3  →  {A, B, C}
+    """
+    def known_safes(self):
+       
+        if self.count == 0:
+            return set(self.cells)
+        return set()
+
+    """
+    Updates internal knowledge representation given the fact that
+    a cell is known to be a mine.
+    """
+    def mark_mine(self, cell):
+        
+        if cell in self.cells:
+            self.cells.discard(cell)
+            self.count -= 1
+    """
+    Updates internal knowledge representation given the fact that
+    a cell is known to be safe.
+    """
+    def mark_safe(self, cell):
+        
+        if cell in self.cells:
+            self.cells.discard(cell)
 
 class LogicIA:
-    def __init__(self, board, rows, cols):
-        self.board = board
-        self.rows  = rows
-        self.cols  = cols
+    """
+    Agente jugador de Buscaminas con base de conocimiento proposicional.
+    """
 
-    # ──────────────────────────────────────────────────────────────────────────
-    #  Vecinos
-    # ──────────────────────────────────────────────────────────────────────────
+    def __init__(self, rows, cols):
+        self.rows = rows
+        self.cols = cols
+
+        self.mines     = set()   # celdas confirmadas como minas
+        self.safes     = set()   # celdas confirmadas como seguras
+        self.knowledge = []      # base de conocimiento: lista de Sentence
+
+        self._procesadas = set() # celdas ya incorporadas al knowledge base
 
     def vecinos(self, row, col):
         resultado = []
@@ -50,128 +86,170 @@ class LogicIA:
                     resultado.append((nr, nc))
         return resultado
 
-    # ──────────────────────────────────────────────────────────────────────────
-    #  Construcción de restricciones desde el tablero
-    # ──────────────────────────────────────────────────────────────────────────
+    """
+    Marks a cell as a mine, and updates all knowledge
+    to mark that cell as a mine as well.
+    """
+    def mark_mine(self, cell):
+ 
+        self.mines.add(cell)
+        for sentence in self.knowledge:
+            sentence.mark_mine(cell)
+    """
+    Marks a cell as safe, and updates all knowledge
+    to mark that cell as safe as well.
+    """
+    def mark_safe(self, cell):
+   
+        self.safes.add(cell)
+        for sentence in self.knowledge:
+            sentence.mark_safe(cell)
 
-    def _construir_restricciones(self):
-        restricciones = set()
-        for row in range(self.rows):
-            for col in range(self.cols):
-                celda = self.board[row][col]
-                if celda["state"] != REVEALED or celda["value"] <= 0:
-                    continue
+    """
+    Called when the Minesweeper board tells us, for a given
+    safe cell, how many neighboring cells have mines in them.
+    """
+    def add_knowledge(self, cell, count):
 
-                ocultas  = []
-                banderas = 0
-                for nr, nc in self.vecinos(row, col):
-                    v = self.board[nr][nc]
-                    if v["state"] == UNREVEALED:
-                        ocultas.append((nr, nc))
-                    elif v["state"] == FLAGGED:
-                        banderas += 1
+        # 1. Marcar como segura y registrar
+        self.mark_safe(cell)
+        self._procesadas.add(cell)
 
-                minas_restantes = celda["value"] - banderas
+        # 2. Construir oración con vecinos ocultos
+        row, col = cell
+        vecinos_ocultos = []
+        minas_conocidas = 0
 
-                if ocultas and 0 <= minas_restantes <= len(ocultas):
-                    restricciones.add(Restriccion(ocultas, minas_restantes))
+        for nr, nc in self.vecinos(row, col):
+            if (nr, nc) in self.mines:
+                minas_conocidas += 1
+            elif (nr, nc) not in self.safes:
+                vecinos_ocultos.append((nr, nc))
 
-        return restricciones
+        count_ajustado = count - minas_conocidas
 
-    # ──────────────────────────────────────────────────────────────────────────
-    #  Propagación de restricciones
-    # ──────────────────────────────────────────────────────────────────────────
+        # 3. Agregar si aporta información nueva
+        if vecinos_ocultos and 0 <= count_ajustado <= len(vecinos_ocultos):
+            nueva = Sentence(vecinos_ocultos, count_ajustado)
+            if nueva not in self.knowledge:
+                self.knowledge.append(nueva)
 
-    def _propagar(self, restricciones):
-        """
-        Aplica las tres reglas de inferencia en bucle hasta convergencia.
+        # 4. Propagar
+        self._update_knowledge()
 
-        Regla 1: |celdas| == k  →  todas minas
-        Regla 2: k == 0         →  todas seguras
-        Regla 3: A ⊆ B          →  nueva restricción (B−A) = (kB − kA)
-        """
-        minas   = set()
-        seguras = set()
-        pendientes = set(restricciones)
-
+    """
+    Aplica las tres reglas de inferencia en bucle hasta convergencia.
+    """
+    def _update_knowledge(self):
         cambio = True
         while cambio:
             cambio = False
-            nuevas = set()
 
-            for r in list(pendientes):
-                # Actualizar restricción con lo ya conocido
-                celdas_activas = r.cells - minas - seguras
-                k = r.count - len(r.cells & minas)
+            # Reglas 1 y 2: extraer minas/seguras confirmadas de cada oración
+            nuevas_minas   = set()
+            nuevas_seguras = set()
 
-                if not celdas_activas:
-                    continue
+            for s in self.knowledge:
+                nuevas_minas   |= s.known_mines()
+                nuevas_seguras |= s.known_safes()
 
-                # Regla 1: todas las celdas activas son minas
-                if k == len(celdas_activas):
-                    for c in celdas_activas:
-                        if c not in minas:
-                            minas.add(c)
-                            cambio = True
-                    continue
+            for cell in nuevas_minas - self.mines:
+                self.mark_mine(cell)
+                cambio = True
 
-                # Regla 2: ninguna celda activa es mina
-                if k == 0:
-                    for c in celdas_activas:
-                        if c not in seguras:
-                            seguras.add(c)
-                            cambio = True
-                    continue
+            for cell in nuevas_seguras - self.safes:
+                self.mark_safe(cell)
+                cambio = True
 
-                nuevas.add(Restriccion(celdas_activas, k))
-
-            # Regla 3: inferencia por subconjuntos  A ⊆ B → (B−A) = (kB − kA)
-            lista = list(nuevas)
-            for i in range(len(lista)):
-                for j in range(len(lista)):
-                    if i == j:
+            # Regla 3: inferencia por subconjunto  A ⊂ B → (B−A) = (kB − kA)
+            activas = [s for s in self.knowledge if s.cells]
+            for a in activas:
+                for b in activas:
+                    if a is b or not a.cells:
                         continue
-                    a, b = lista[i], lista[j]
-                    if a.cells and a.cells < b.cells:
-                        diff_count = b.count - a.count
+                    if a.cells < b.cells:           # a es subconjunto propio de b
                         diff_cells = b.cells - a.cells
+                        diff_count = b.count - a.count
                         if 0 <= diff_count <= len(diff_cells):
-                            nueva = Restriccion(diff_cells, diff_count)
-                            if nueva not in nuevas:
-                                nuevas.add(nueva)
+                            nueva = Sentence(diff_cells, diff_count)
+                            if nueva not in self.knowledge:
+                                self.knowledge.append(nueva)
                                 cambio = True
 
-            pendientes = nuevas
+            # Eliminar oraciones vacías (ya resueltas)
+            self.knowledge = [s for s in self.knowledge if s.cells]
+    """
+    Retorna un movimiento aleatorio entre celdas no reveladas y no
+    conocidas como minas. Solo se usa cuando no hay inferencias posibles.
+    """
 
-        return minas, seguras
+    def make_random_move(self, board):
+        
+        candidatas = [
+            (r, c)
+            for r in range(self.rows)
+            for c in range(self.cols)
+            if board[r][c]["state"] == UNREVEALED and (r, c) not in self.mines
+        ]
+        if candidatas:
+            return random.choice(candidatas)
+        return None
 
-    # ──────────────────────────────────────────────────────────────────────────
-    #  API pública
-    # ──────────────────────────────────────────────────────────────────────────
+    """
+    Escanea el tablero en busca de celdas recién reveladas, incorpora su
+    conocimiento y retorna las conclusiones actuales.
 
-    def analizar(self):
-        restricciones = self._construir_restricciones()
-        minas, seguras = self._propagar(restricciones)
+    Retorna:
+        {
+            "seguras":   [(r,c), ...],  celdas ocultas confirmadas seguras
+            "minas":     [(r,c), ...],  celdas ocultas confirmadas minas
+            "inciertas": [(r,c), ...],  celdas ocultas sin clasificar
+        }
+    """
+    def analizar(self, board):
+        
+        # Incorporar celdas reveladas aún no procesadas
+        for r in range(self.rows):
+            for c in range(self.cols):
+                celda = board[r][c]
+                if celda["state"] == REVEALED and (r, c) not in self._procesadas:
+                    self.add_knowledge((r, c), celda["value"])
+                # Sincronizar banderas manuales del jugador
+                elif celda["state"] == FLAGGED and (r, c) not in self.mines:
+                    self.mark_mine((r, c))
 
         todas_ocultas = {
             (r, c)
             for r in range(self.rows)
             for c in range(self.cols)
-            if self.board[r][c]["state"] == UNREVEALED
+            if board[r][c]["state"] == UNREVEALED
         }
-        inciertas = todas_ocultas - minas - seguras
 
-        print(f"[IA] Seguras: {len(seguras)}  Minas: {len(minas)}  Inciertas: {len(inciertas)}")
+        seguras       = todas_ocultas & self.safes
+        minas_ocultas = todas_ocultas & self.mines
+        inciertas     = todas_ocultas - seguras - minas_ocultas
+
+        print(f"[IA] Knowledge: {len(self.knowledge)} oraciones | "
+              f"Seguras: {len(seguras)}  Minas: {len(minas_ocultas)}  "
+              f"Inciertas: {len(inciertas)}")
 
         return {
             "seguras":   list(seguras),
-            "minas":     list(minas),
+            "minas":     list(minas_ocultas),
             "inciertas": list(inciertas),
             "logs":      [],
         }
 
     def primer_movimiento(self):
+        """Movimiento inicial aleatorio (antes de conocer el tablero)."""
         row = random.randint(0, self.rows - 1)
         col = random.randint(0, self.cols - 1)
         print(f"[IA] Primer movimiento aleatorio en ({row},{col})")
         return (row, col)
+
+    def reset(self):
+        """Reinicia la base de conocimiento para una nueva partida."""
+        self.mines       = set()
+        self.safes       = set()
+        self.knowledge   = []
+        self._procesadas = set()

@@ -34,6 +34,9 @@ class GameLogic:
         self.esperando_decision_usuario = False
         self.inciertas_ia               = []
 
+        # Base de conocimiento persistente (se crea una vez por partida)
+        self.ia = LogicIA(self.rows, self.cols)
+
     # -----------------------------------------
     #  Tablero
     # -----------------------------------------
@@ -179,19 +182,18 @@ class GameLogic:
     # -----------------------------------------
     #  IA
     # -----------------------------------------
-    """
-        Ejecuta un turno de la IA.
+
+    def jugar_turno_ia(self) -> set:
+        """
+        Ejecuta un turno de la IA usando la base de conocimiento persistente.
         Devuelve el set de celdas (row, col) que la IA tocó,
         para que GameScreen pueda resaltarlas visualmente.
-    """
-    def jugar_turno_ia(self) -> set:
-        
-        ia = LogicIA(self.board, self.rows, self.cols)
+        """
         tocadas = set()
 
-        # Primer movimiento
+        # Primer movimiento: aún no hay tablero generado
         if not self.game_active:
-            row, col = ia.primer_movimiento()
+            row, col = self.ia.primer_movimiento()
             self.game_active = True
             self._start_time = time.time()
             if not self.bombas_generadas:
@@ -200,8 +202,10 @@ class GameLogic:
             revelar_celdas_vacias(self.board, row, col, self.rows, self.cols)
             return tocadas
 
-        resultado = ia.analizar()
+        # Analizar tablero e incorporar nuevo conocimiento
+        resultado = self.ia.analizar(self.board)
 
+        # Marcar minas confirmadas con bandera
         for row, col in resultado["minas"]:
             cell = self.board[row][col]
             if cell["state"] == UNREVEALED:
@@ -209,6 +213,7 @@ class GameLogic:
                 self.flags_placed += 1
                 tocadas.add((row, col))
 
+        # Revelar celdas seguras confirmadas
         for row, col in resultado["seguras"]:
             cell = self.board[row][col]
             if cell["state"] == UNREVEALED:
@@ -222,46 +227,44 @@ class GameLogic:
             self.esperando_decision_usuario = False
             return tocadas
 
+        # Sin movimientos lógicos: pedir decisión al usuario
         if not resultado["minas"] and not resultado["seguras"]:
             print("[IA] No hay movimientos logicos disponibles")
-            print("[IA] Presiona Y para movimiento aleatorio")
-            print("[IA] Presiona N para control manual")
-            self.inciertas_ia = [
-                (r, c)
-                for r in range(self.rows)
-                for c in range(self.cols)
-                if self.board[r][c]["state"] == UNREVEALED
-            ]
+            self.inciertas_ia = resultado["inciertas"]
             self.esperando_decision_usuario = True
 
         return tocadas
 
     def ia_movimiento_aleatorio(self) -> set:
-        """Movimiento aleatorio cuando la IA no tiene certeza."""
+        """
+        Movimiento aleatorio cuando la IA no tiene inferencias posibles.
+        Usa make_random_move() de LogicIA (equivalente al CS50).
+        """
         tocadas = set()
-        if not self.inciertas_ia:
+        cell = self.ia.make_random_move(self.board)
+        if cell is None:
             return tocadas
-        
-        row, col = random.choice(self.inciertas_ia)
+
+        row, col = cell
         print(f"[IA] Movimiento aleatorio en ({row}, {col})")
         tocadas.add((row, col))
-        cell = self.board[row][col]
-        #Si la IA toca Bomba
-        if cell["value"] == MINE:
-             print("[IA] La IA ha tocado una mina")
-             self.game_over = True
-             self.game_active = False
-             self.face_state = FACE_DEAD
-             self.esperando_decision_usuario = False
-             self._reveal_all_mines(row,col)
-             return tocadas
-        #Movimisntos seguros
+        c = self.board[row][col]
+
+        if c["value"] == MINE:
+            print("[IA] La IA ha tocado una mina")
+            self.game_over   = True
+            self.game_active = False
+            self.face_state  = FACE_DEAD
+            self.esperando_decision_usuario = False
+            self._reveal_all_mines(row, col)
+            return tocadas
+
         revelar_celdas_vacias(self.board, row, col, self.rows, self.cols)
         if self._check_win():
-            self.game_won = True
+            self.game_won    = True
             self.game_active = False
-            self.face_state = FACE_WON
-        self.esperando_decision_usuario = False    
+            self.face_state  = FACE_WON
+        self.esperando_decision_usuario = False
         return tocadas
     
     # -----------------------------------------
@@ -281,4 +284,5 @@ class GameLogic:
         self.ia_auto                    = False
         self.esperando_decision_usuario = False
         self.inciertas_ia               = []
+        self.ia.reset()
 

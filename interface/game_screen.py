@@ -191,40 +191,35 @@ class GameScreen:
         fields_ltr = [
             ("Filas",    "_sb_rows",  MIN_ROWS, MAX_ROWS),
             ("Columnas", "_sb_cols",  MIN_COLS, MAX_COLS),
-            ("Minas",    "_sb_mines", 1,        None),
+            ("Minas",    "_sb_mines", None,     None),   # ← lo=None, hi=None; _mines_limits() los resuelve
         ]
 
-        # Ancho total que ocupan los 3 campos
-        field_unit = ico + 2 + vw + 2 + bw + gap   # icono + val + flechas + gap
-        sb_width   = field_unit * 3 - gap           # sin gap final
+        field_unit = ico + 2 + vw + 2 + bw + gap
+        sb_width   = field_unit * 3 - gap
 
-        # Borde derecho del último botón del toolbar
         toolbar_right = (self._toolbar_btn_rects[-1].right
-                         if self._toolbar_btn_rects else 0)
+                        if self._toolbar_btn_rects else 0)
 
-        # ¿Caben inline (a la derecha de los botones)?
         self._sb_second_row = (toolbar_right + 10 + sb_width > self._win_w)
 
         if self._sb_second_row:
-            # Segunda fila: empezar desde la izquierda
             cy = TH + self._SB_ROW_H // 2
             x  = 8
             for label, attr, lo, hi in fields_ltr:
-                r_ico = pygame.Rect(x,              cy - ico//2, ico,  ico)
-                r_val = pygame.Rect(r_ico.right + 2, cy - bh,    vw,   bh * 2)
-                r_up  = pygame.Rect(r_val.right + 2, cy - bh,    bw,   bh)
-                r_dn  = pygame.Rect(r_val.right + 2, cy,         bw,   bh)
+                r_ico = pygame.Rect(x,               cy - ico//2, ico, ico)
+                r_val = pygame.Rect(r_ico.right + 2, cy - bh,     vw,  bh * 2)
+                r_up  = pygame.Rect(r_val.right + 2, cy - bh,     bw,  bh)
+                r_dn  = pygame.Rect(r_val.right + 2, cy,          bw,  bh)
                 self._sb_fields.append((label, attr, lo, hi, r_up, r_dn, r_val, r_ico))
                 x = r_up.right + gap
         else:
-            # Misma fila: alineada a la derecha del toolbar (RTL)
             cy = TH // 2
             x  = self._win_w - 8
             for label, attr, lo, hi in reversed(fields_ltr):
-                r_up  = pygame.Rect(x - bw,             cy - bh, bw, bh)
-                r_dn  = pygame.Rect(x - bw,             cy,      bw, bh)
-                r_val = pygame.Rect(x - bw - vw - 2,    cy - bh, vw, bh * 2)
-                r_ico = pygame.Rect(r_val.x - ico - 2,  cy - ico//2, ico, ico)
+                r_up  = pygame.Rect(x - bw,            cy - bh,     bw, bh)
+                r_dn  = pygame.Rect(x - bw,            cy,          bw, bh)
+                r_val = pygame.Rect(x - bw - vw - 2,   cy - bh,     vw, bh * 2)
+                r_ico = pygame.Rect(r_val.x - ico - 2, cy - ico//2, ico, ico)
                 self._sb_fields.insert(0, (label, attr, lo, hi, r_up, r_dn, r_val, r_ico))
                 x = r_ico.x - gap
 
@@ -262,13 +257,21 @@ class GameScreen:
         return False
 
     def _apply_sb(self):
+        mn, mx = self._mines_limits()
+        self._sb_mines = max(mn, min(mx, self._sb_mines))  # clampear antes de aplicar
         cfg = {
             "name":  "Personalizado",
             "rows":  self._sb_rows,
             "cols":  self._sb_cols,
-            "mines": min(self._sb_mines, self._sb_rows * self._sb_cols - 9),
+            "mines": self._sb_mines,
         }
         return ("start_game", cfg)
+    
+    def _mines_limits(self):
+        total  = self._sb_rows * self._sb_cols
+        minimo = max(1, round(total * 0.10))
+        maximo = min(round(total * 0.80), total - 9)
+        return minimo, maximo
 
     def _reset_ui(self):
         self._left_held      = False
@@ -306,7 +309,10 @@ class GameScreen:
                     label, attr, lo, hi, *_ = self._sb_fields[self._sb_focused]
                     hi_val = hi if hi is not None else max(1, self._sb_rows * self._sb_cols - 9)
                     try:
-                        setattr(self, attr, max(lo, min(hi_val, int(self._sb_input))))
+                        mn, mx = self._mines_limits()
+                        lo_val = mn if label == "Minas" else lo
+                        hi_val = mx if label == "Minas" else hi
+                        setattr(self, attr, max(lo_val, min(hi_val, int(self._sb_input))))
                     except ValueError:
                         pass
                     self._sb_focused = None
@@ -347,11 +353,17 @@ class GameScreen:
                         return None
                     if r_up.collidepoint(pos):
                         self._sb_focused = None
+                        mn, mx = self._mines_limits()
+                        lo_val = mn if label == "Minas" else lo
+                        hi_val = mx if label == "Minas" else hi
                         setattr(self, attr, min(hi_val, getattr(self, attr) + 1))
                         return self._apply_sb()
                     if r_dn.collidepoint(pos):
                         self._sb_focused = None
-                        setattr(self, attr, max(lo, getattr(self, attr) - 1))
+                        mn, mx = self._mines_limits()
+                        lo_val = mn if label == "Minas" else lo
+                        hi_val = mx if label == "Minas" else hi
+                        setattr(self, attr, max(lo_val, getattr(self, attr) - 1))
                         return self._apply_sb()
 
             # Botones del toolbar
@@ -370,6 +382,9 @@ class GameScreen:
                     if new_idx < 3:
                         return ("start_game", dict(DIFFICULTIES[DIFF_ORDER[new_idx]]))
                     else:
+                        # Precalcular minas máximas al entrar a personalizado
+                        _, mx = self._mines_limits()
+                        self._sb_mines = mx          
                         self._compute_layout()
                         return ("resize", None)
                 elif btn_id == _QUES:

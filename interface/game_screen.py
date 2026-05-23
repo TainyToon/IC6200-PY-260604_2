@@ -108,21 +108,31 @@ class GameScreen:
     #  Layout
     # ──────────────────────────────────────────────────────────────────────────
 
+    _SB_ROW_H = 52   # altura de la segunda fila cuando no caben inline
+
     def _compute_layout(self):
         lg = self.logic
         BO, BI, CS, TH = BORDER_OUTER, BORDER_INNER, self._cell_size, TOOLBAR_H
         bpw = lg.cols * CS
         bph = lg.rows * CS
         self._win_w = BO + BI + bpw + BI + BO
-        self._win_h = TH + BO + HEADER_H + BI + bph + BI + BO + self._STATUS_H
-        self._toolbar_rect = pygame.Rect(0, 0, self._win_w, TH)
+
+        # Construir toolbar y decidir si los controles de personalizado
+        # caben inline o necesitan una segunda fila
         self._build_toolbar_rects(TH)
         self._build_sb_rects(TH)
-        self._header_rect = pygame.Rect(BO, TH + BO, self._win_w - 2*BO, HEADER_H)
-        self._board_rect  = pygame.Rect(BO, TH + BO + HEADER_H + BI,
+
+        sb_extra = self._SB_ROW_H if self._sb_second_row else 0
+        top_h    = TH + sb_extra   # altura total de la zona superior
+
+        self._win_h      = top_h + BO + HEADER_H + BI + bph + BI + BO + self._STATUS_H
+        self._toolbar_rect = pygame.Rect(0, 0, self._win_w, top_h)
+
+        self._header_rect = pygame.Rect(BO, top_h + BO, self._win_w - 2*BO, HEADER_H)
+        self._board_rect  = pygame.Rect(BO, top_h + BO + HEADER_H + BI,
                                         self._win_w - 2*BO, bph + 2*BI)
         self._grid_x = BO + BI
-        self._grid_y = TH + BO + HEADER_H + BI + BI
+        self._grid_y = top_h + BO + HEADER_H + BI + BI
         hx  = self._header_rect.x + 2
         hw  = self._header_rect.w - 4
         hcy = self._header_rect.centery
@@ -164,28 +174,59 @@ class GameScreen:
                 x += bs + gap
 
     def _build_sb_rects(self, TH):
-        """Controles de config personalizada alineados a la derecha del toolbar."""
-        self._sb_fields = []
+        """
+        Controles de config personalizada.
+        Si caben en la misma fila que los botones → inline (derecha del toolbar).
+        Si no caben → segunda fila debajo del toolbar, pegados a la izquierda.
+        """
+        self._sb_fields      = []
+        self._sb_second_row  = False
         if self._diff_idx != 3:
             return
-        cy   = TH // 2
+
         bw, bh = 18, 14
         vw   = 36
         ico  = 32
         gap  = 8
-        fields_rtl = [
-            ("Minas",    "_sb_mines", 1,        None),
-            ("Columnas", "_sb_cols",  MIN_COLS, MAX_COLS),
+        fields_ltr = [
             ("Filas",    "_sb_rows",  MIN_ROWS, MAX_ROWS),
+            ("Columnas", "_sb_cols",  MIN_COLS, MAX_COLS),
+            ("Minas",    "_sb_mines", 1,        None),
         ]
-        x = self._win_w - 8
-        for label, attr, lo, hi in fields_rtl:
-            r_up  = pygame.Rect(x - bw,            cy - bh, bw, bh)
-            r_dn  = pygame.Rect(x - bw,            cy,      bw, bh)
-            r_val = pygame.Rect(x - bw - vw - 2,   cy - bh, vw, bh * 2)
-            r_ico = pygame.Rect(r_val.x - ico - 2, cy - ico//2, ico, ico)
-            self._sb_fields.insert(0, (label, attr, lo, hi, r_up, r_dn, r_val, r_ico))
-            x = r_ico.x - gap
+
+        # Ancho total que ocupan los 3 campos
+        field_unit = ico + 2 + vw + 2 + bw + gap   # icono + val + flechas + gap
+        sb_width   = field_unit * 3 - gap           # sin gap final
+
+        # Borde derecho del último botón del toolbar
+        toolbar_right = (self._toolbar_btn_rects[-1].right
+                         if self._toolbar_btn_rects else 0)
+
+        # ¿Caben inline (a la derecha de los botones)?
+        self._sb_second_row = (toolbar_right + 10 + sb_width > self._win_w)
+
+        if self._sb_second_row:
+            # Segunda fila: empezar desde la izquierda
+            cy = TH + self._SB_ROW_H // 2
+            x  = 8
+            for label, attr, lo, hi in fields_ltr:
+                r_ico = pygame.Rect(x,              cy - ico//2, ico,  ico)
+                r_val = pygame.Rect(r_ico.right + 2, cy - bh,    vw,   bh * 2)
+                r_up  = pygame.Rect(r_val.right + 2, cy - bh,    bw,   bh)
+                r_dn  = pygame.Rect(r_val.right + 2, cy,         bw,   bh)
+                self._sb_fields.append((label, attr, lo, hi, r_up, r_dn, r_val, r_ico))
+                x = r_up.right + gap
+        else:
+            # Misma fila: alineada a la derecha del toolbar (RTL)
+            cy = TH // 2
+            x  = self._win_w - 8
+            for label, attr, lo, hi in reversed(fields_ltr):
+                r_up  = pygame.Rect(x - bw,             cy - bh, bw, bh)
+                r_dn  = pygame.Rect(x - bw,             cy,      bw, bh)
+                r_val = pygame.Rect(x - bw - vw - 2,    cy - bh, vw, bh * 2)
+                r_ico = pygame.Rect(r_val.x - ico - 2,  cy - ico//2, ico, ico)
+                self._sb_fields.insert(0, (label, attr, lo, hi, r_up, r_dn, r_val, r_ico))
+                x = r_ico.x - gap
 
     def get_size(self):
         return (self._win_w, self._win_h)
@@ -409,8 +450,9 @@ class GameScreen:
     def draw(self, screen):
         lg = self.logic
         screen.fill(C_BG)
-        draw_raised(screen, (0, TOOLBAR_H, self._win_w,
-                             self._win_h - self._STATUS_H - TOOLBAR_H),
+        top_h = self._toolbar_rect.height
+        draw_raised(screen, (0, top_h, self._win_w,
+                             self._win_h - self._STATUS_H - top_h),
                     w=BORDER_OUTER // 2)
         self._draw_toolbar(screen)
         pygame.draw.rect(screen, C_BG, self._header_rect)
@@ -426,9 +468,19 @@ class GameScreen:
             self._draw_ia_dialog(screen)
 
     def _draw_toolbar(self, screen):
-        TH = TOOLBAR_H
+        TH    = TOOLBAR_H
+        top_h = self._toolbar_rect.height   # TH  ó  TH + _SB_ROW_H
+
+        # Fondo y borde 3-D de toda la zona superior
         pygame.draw.rect(screen, C_BG, self._toolbar_rect)
-        draw_raised(screen, (0, 0, self._win_w, TH), w=2)
+        draw_raised(screen, tuple(self._toolbar_rect), w=2)
+
+        # Separador entre fila 1 y fila 2 cuando los controles van abajo
+        if self._sb_second_row:
+            pygame.draw.line(screen, C_GRAY_MID, (2, TH-1), (self._win_w-3, TH-1), 1)
+            pygame.draw.line(screen, C_WHITE,    (2, TH),   (self._win_w-3, TH),   1)
+
+        # Botones de la fila 1
         mpos = pygame.mouse.get_pos()
         mb   = pygame.mouse.get_pressed()
         for btn_r, btn_id in zip(self._toolbar_btn_rects, self._toolbar_btn_ids):
@@ -440,6 +492,8 @@ class GameScreen:
         for sx in self._toolbar_separators:
             pygame.draw.line(screen, C_GRAY_MID, (sx,   5), (sx,   TH-5), 1)
             pygame.draw.line(screen, C_WHITE,    (sx+1, 5), (sx+1, TH-5), 1)
+
+        # Controles de config personalizada (inline o segunda fila)
         self._draw_sb_inline(screen)
 
     def _draw_sb_inline(self, screen):

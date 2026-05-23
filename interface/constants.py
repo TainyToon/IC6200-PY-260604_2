@@ -9,7 +9,7 @@ TITLE = "BUSCAMINAS"
 # ----------------------------------------------
 # Medidas de layout
 # ----------------------------------------------
-CELL_SIZE    = 26    # pixeles por celda (inicial; puede cambiar con zoom)
+CELL_SIZE    = 28    # pixeles por celda (inicial; puede cambiar con zoom)
 BORDER_OUTER = 14    # borde exterior de la ventana (px)
 BORDER_INNER = 8     # separacion entre paneles (px)
 HEADER_H     = 54    # altura total de la cabecera
@@ -65,7 +65,7 @@ DIFFICULTIES = {
 DIFF_ORDER = ["novato", "aficionado", "experimentado"]
 
 MIN_ROWS = 9;  MIN_COLS = 9
-MAX_ROWS = 16; MAX_COLS = 30
+MAX_ROWS = 20; MAX_COLS = 40
 
 # ----------------------------------------------
 # Estados de celda

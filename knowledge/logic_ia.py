@@ -198,13 +198,6 @@ class LogicIA:
     """
     Escanea el tablero en busca de celdas recién reveladas, incorpora su
     conocimiento y retorna las conclusiones actuales.
-
-    Retorna:
-        {
-            "seguras":   [(r,c), ...],  celdas ocultas confirmadas seguras
-            "minas":     [(r,c), ...],  celdas ocultas confirmadas minas
-            "inciertas": [(r,c), ...],  celdas ocultas sin clasificar
-        }
     """
     def analizar(self, board):
         

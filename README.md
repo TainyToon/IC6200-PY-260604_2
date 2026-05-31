@@ -53,20 +53,6 @@ La estructura de `LogicIA` está inspirada en el proyecto *Minesweeper* del curs
 
 El proyecto de CS50 define una clase `Sentence` que encapsula una restricción del tipo `{celdas} = count`, y una clase `MinesweeperAI` que mantiene una **base de conocimiento persistente** compuesta por esas oraciones. A diferencia de reconstruir el conocimiento desde cero en cada turno, el agente acumula información incrementalmente: cada vez que se revela una celda, se agrega una nueva oración y se propagan las inferencias sobre todas las existentes.
 
-Nuestro `LogicIA` sigue exactamente esa misma arquitectura:
-
-| CS50 (`minesweeper.py`) | Nuestro `logic_ia.py` |
-|---|---|
-| `Sentence(cells, count)` | `Sentence(cells, count)` |
-| `known_mines()` | `known_mines()` — Regla 1 |
-| `known_safes()` | `known_safes()` — Regla 2 |
-| `mark_mine(cell)` | `mark_mine(cell)` |
-| `mark_safe(cell)` | `mark_safe(cell)` |
-| `MinesweeperAI.knowledge` | `LogicIA.knowledge` |
-| `MinesweeperAI.mines` / `.safes` | `LogicIA.mines` / `.safes` |
-| `add_knowledge(cell, count)` | `add_knowledge(cell, count)` |
-| `make_safe_move()` | `make_safe_move(board)` |
-| `make_random_move()` | `make_random_move(board)` |
 
 La diferencia principal es que nosotros añadimos la **Regla 3 de inferencia por subconjunto** dentro de `_update_knowledge()`. El CS50 la menciona como mejora opcional; en nuestra implementación es esencial para resolver situaciones donde las Reglas 1 y 2 solas no son suficientes:
 
@@ -89,15 +75,15 @@ https://cs50.harvard.edu/ai/
 
 Las tres reglas que aplica `_update_knowledge()` en bucle hasta convergencia:
 
-**Regla 1 — Resolución unitaria positiva**
+**Regla 1 Resolución unitaria positiva:**
 Si el número de celdas ocultas en una oración es igual al conteo de minas, todas son minas.
 `{A, B, C} = 3` → A es mina, B es mina, C es mina
 
-**Regla 2 — Resolución unitaria negativa**
+**Regla 2 Resolución unitaria negativa:**
 Si el conteo de minas es 0, ninguna celda es mina: todas son seguras.
 `{A, B, C} = 0` → A es segura, B es segura, C es segura
 
-**Regla 3 — Inferencia por subconjunto**
+**Regla 3 Inferencia por subconjunto:**
 Si una oración es subconjunto propio de otra, se deriva una nueva oración con las celdas y el conteo restante.
 `A ⊂ B` → nueva oración `(B − A) = (kB − kA)`
 

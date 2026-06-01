@@ -2,17 +2,17 @@
 
 ## Por qué no se puede usar directamente `logic.py`
 
-La librería `logic.py` vista en clase implementa los operadores clásicos de la lógica proposicional:
+La librería `logic.py` que usamos en clase implementa los operadores logicos proposicional:
 
 - `Symbol` — representa una proposición atómica (verdadera o falsa)
 - `And`, `Or`, `Not`, `Implication`, `Biconditional` — conectivos lógicos
 - `model_check` — verifica si una consulta se deduce del conocimiento evaluando todos los modelos posibles
 
-Estas herramientas permiten construir expresiones lógicas y verificar conclusiones a partir de una base de conocimiento. Sin embargo, el problema del Buscaminas exige un tipo de razonamiento que va más allá de lo que `model_check` puede manejar de forma eficiente.
+Estas herramientas permiten construir expresiones lógicas y verificar conclusiones a partir de una base de conocimiento. Sin embargo, el problema del Buscaminas exige un tipo de solucion diferente a lo visto en clase con las preposiciones ya que un model_check no es lo suficientemente "bueno" para realizar este trabajo.
 
 ### El problema de las restricciones numéricas
 
-La lógica proposicional clásica trabaja con afirmaciones individuales del tipo:
+La lógica proposicional trabaja con afirmaciones individuales del tipo:
 
 ```
 A = "La celda A contiene una mina"   →   verdadero o falso
@@ -43,7 +43,7 @@ Para cuatro vecinos `A, B, C, D` con exactamente 2 minas, la expresión crece a 
 
 ### Conclusión
 
-`logic.py` permanece en el repositorio como referencia de la base teórica vista en clase. La clase `LogicIA` implementa los mismos principios de inferencia lógica, pero usando una representación compacta (restricciones numéricas) y propagación directa en lugar de enumeración de modelos, lo que hace el agente funcional en los tres niveles requeridos.
+Usamos `logic.py` como referencia y en realidad esta fue usada en las primeras versiones del py lo cual nos permitio darnos cuenta de los problemas reales que esta presenta en su uso para este proyecto. La `LogicIA` es la que implementa los mismos principios d einferencia logica pero usando una representacion mas compacta y mejor (usando restricciones numericas) y propagacion directa en lugar de enumeracion de modelos, lo que hace que el agente funcional en los tres niveles requeridos. Con esto dicho, pudimos aprender con base a prueba y error hasta dar con el verdadero problema y de ahi se empezo una investigaciion para una posible solucion a los problemas presentes con `model_check`, lo cual fue asi, permitiendo concretar el proyecto Buscaminas de manera eficiente.
 
 ---
 

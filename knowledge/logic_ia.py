@@ -60,7 +60,7 @@ class Sentence:
         if cell in self.cells:
             self.cells.discard(cell)
 
-class LogicIA:
+class BuscaminasIA:
     """
     Agente jugador de Buscaminas con base de conocimiento proposicional.
     """

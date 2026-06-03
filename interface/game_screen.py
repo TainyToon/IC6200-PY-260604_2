@@ -22,7 +22,7 @@ class GameScreen:
 
     _STATUS_BG  = ( 40,  40,  40)
     _STATUS_TXT = (210, 210, 210)
-    _STATUS_H   = 20
+
 
     # ──────────────────────────────────────────────────────────────────────────
     #  Inicializacion
@@ -94,6 +94,12 @@ class GameScreen:
         self._font_status = pygame.font.SysFont("Arial", 11)
         self._font_num    = pygame.font.Font(None, 14)
 
+        # ── Drawer de estadísticas ──────────────────────────────────────────
+        self._drawer_open    = False   # abierto / cerrado
+        self._DRAWER_W       = 190    # ancho maximo del panel
+        self._drawer_visible = 0      # px visibles ahora (0=cerrado, DRAWER_W=abierto)
+        self._DRAWER_SPEED   = 18     # px por frame
+
         self._compute_layout()
 
     def _load_cell_img(self, fname):
@@ -125,7 +131,7 @@ class GameScreen:
         sb_extra = self._SB_ROW_H if self._sb_second_row else 0
         top_h    = TH + sb_extra   # altura total de la zona superior
 
-        self._win_h      = top_h + BO + HEADER_H + BI + bph + BI + BO + self._STATUS_H
+        self._win_h      = top_h + BO + HEADER_H + BI + bph + BI + BO 
         self._toolbar_rect = pygame.Rect(0, 0, self._win_w, top_h)
 
         self._header_rect = pygame.Rect(BO, top_h + BO, self._win_w - 2*BO, HEADER_H)
@@ -143,9 +149,14 @@ class GameScreen:
         self._lcd_timer_rect = pygame.Rect(hx + hw - PAD - lcd_w, hcy - lcd_h//2, lcd_w, lcd_h)
         self._face_rect = pygame.Rect(self._header_rect.centerx - FACE_SIZE//2,
                                       hcy - FACE_SIZE//2, FACE_SIZE, FACE_SIZE)
-        self._status_rect = pygame.Rect(0, self._win_h - self._STATUS_H,
-                                        self._win_w, self._STATUS_H)
+        self._status_rect = pygame.Rect(0, self._win_h - 0,
+                                        self._win_w, 0)
         self._build_ia_dialog_rects()
+
+        # Botón de toggle del drawer (pestaña lateral derecha del drawer)
+        self._drawer_tab_rect = pygame.Rect(
+            0, self._win_h // 2 - 36, 16, 72
+        )
 
     def _build_ia_dialog_rects(self):
         dw, dh = 270, 130
@@ -224,7 +235,8 @@ class GameScreen:
                 x = r_ico.x - gap
 
     def get_size(self):
-        return (self._win_w, self._win_h)
+        current_w = self._win_w + int(self._drawer_visible)
+        return (current_w, self._win_h)
 
     # ──────────────────────────────────────────────────────────────────────────
     #  Helpers UI
@@ -343,6 +355,16 @@ class GameScreen:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
 
+            # Pestaña del drawer de estadísticas
+            TAB_W   = 16
+            TAB_H   = 72
+            tab_x   = self._win_w - TAB_W # pestaña pegada al borde del drawer
+            tab_y   = self._win_h // 2 - TAB_H // 2
+            tab_hit = pygame.Rect(tab_x, tab_y, TAB_W, TAB_H).collidepoint(pos)
+            if tab_hit:
+                self._drawer_open = not self._drawer_open
+                return None
+
             # Campos de config personalizada en el toolbar
             if self._sb_fields and self._toolbar_rect.collidepoint(pos):
                 for i, (label, attr, lo, hi, r_up, r_dn, r_val, r_ico) in enumerate(self._sb_fields):
@@ -446,6 +468,16 @@ class GameScreen:
         self.logic.update()
         lg = self.logic
 
+        # ── Animación del drawer ──────────────────────────────────────────────
+        target_vis = self._DRAWER_W if self._drawer_open else 0
+        if int(self._drawer_visible) != target_vis:
+            step = self._DRAWER_SPEED
+            if self._drawer_visible < target_vis:
+                self._drawer_visible = min(self._drawer_visible + step, target_vis)
+            else:
+                self._drawer_visible = max(self._drawer_visible - step, target_vis)
+            return ('resize', None)   # avisa al main loop para redimensionar
+
         # Detenemos IA mientras espera respuesta o usuario marca manual
         if lg.esperando_decision_usuario or self._ia_manual_mode:
             return
@@ -463,24 +495,33 @@ class GameScreen:
     # ──────────────────────────────────────────────────────────────────────────
 
     def draw(self, screen):
-        lg = self.logic
+        lg  = self.logic
         screen.fill(C_BG)
+
+        # Superficie temporal para el juego (ya no aplicamos offset)
+        game_surf = pygame.Surface((self._win_w, self._win_h))
+        game_surf.fill(C_BG)
         top_h = self._toolbar_rect.height
-        draw_raised(screen, (0, top_h, self._win_w,
-                             self._win_h - self._STATUS_H - top_h),
+        draw_raised(game_surf, (0, top_h, self._win_w,
+                                self._win_h - top_h),
                     w=BORDER_OUTER // 2)
-        self._draw_toolbar(screen)
-        pygame.draw.rect(screen, C_BG, self._header_rect)
-        draw_sunken(screen, self._header_rect, w=2)
-        self._draw_lcd(screen, self._lcd_mines_rect, lg.mines - lg.flags_placed)
-        self._draw_face(screen)
-        self._draw_lcd(screen, self._lcd_timer_rect, lg.elapsed)
-        pygame.draw.rect(screen, C_BG, self._board_rect)
-        draw_sunken(screen, self._board_rect, w=BORDER_INNER // 2)
-        self._draw_board(screen)
-        self._draw_status(screen)
+        self._draw_toolbar(game_surf)
+        pygame.draw.rect(game_surf, C_BG, self._header_rect)
+        draw_sunken(game_surf, self._header_rect, w=2)
+        self._draw_lcd(game_surf, self._lcd_mines_rect, lg.mines - lg.flags_placed)
+        self._draw_face(game_surf)
+        self._draw_lcd(game_surf, self._lcd_timer_rect, lg.elapsed)
+        pygame.draw.rect(game_surf, C_BG, self._board_rect)
+        draw_sunken(game_surf, self._board_rect, w=BORDER_INNER // 2)
+        self._draw_board(game_surf)
         if self.logic.esperando_decision_usuario:
-            self._draw_ia_dialog(screen)
+            self._draw_ia_dialog(game_surf)
+        
+        # El tablero SIEMPRE se queda fijo en la esquina superior izquierda
+        screen.blit(game_surf, (0, 0))
+        
+        # El drawer ahora se dibuja después para acoplarse a la derecha
+        self._draw_stats_drawer(screen)
 
     def _draw_toolbar(self, screen):
         TH    = TOOLBAR_H
@@ -725,19 +766,153 @@ class GameScreen:
             tb = fn_btn.render(label, True, C_BLACK)
             screen.blit(tb, tb.get_rect(center=btn_r.center))
 
-    def _draw_status(self, screen):
-        lg = self.logic
-        pygame.draw.rect(screen, self._STATUS_BG, self._status_rect)
-        if lg.game_won:
-            msg = "Ganaste!  R -> reiniciar"
-        elif lg.game_over:
-            msg = "Perdiste!  R -> reiniciar"
-        elif self._ia_manual_mode:
-            msg = "Modo manual: haz clic en una casilla para revelarla"
+    def _draw_stats_drawer(self, screen):
+
+        DW    = self._DRAWER_W
+        DH    = self._win_h
+        vis   = int(self._drawer_visible)   # px visibles ahora
+        if vis <= 0:
+            # Solo dibujar la pestaña cuando está completamente cerrado
+            pass
+        stats = self.logic.stats
+        lg    = self.logic
+
+        # ── Colores del drawer ────────────────────────────────────────────────
+       
+        _TEXT      = (34, 39, 49)
+        _MUTED     = (86, 94, 110)
+        _CARD      = (245, 247, 250)
+        _CARD_ALT  = (235, 239, 245)
+        _GREEN     = (46, 160, 90)
+        _RED       = (220, 75, 75)
+        _YELLOW    = (210, 150, 35)
+
+
+        fn_title  = pygame.font.SysFont("Arial", 12, bold=True)
+        fn_label  = pygame.font.SysFont("Arial", 11,bold=True)
+        fn_value  = pygame.font.SysFont("Arial", 13, bold=True)
+        fn_small  = pygame.font.SysFont("Arial",  12, bold=True)
+
+        # ── Panel principal ───────────────────────────────────────────────────
+        panel = pygame.Surface((DW, DH), pygame.SRCALPHA)
+        panel.fill(C_BG)
+        
+        # Cabecera
+        pygame.draw.rect(panel, _CARD, (8, 8, DW - 16, 28), border_radius=7)
+        t = fn_title.render("ESTADÍSTICAS", True, _TEXT)
+        panel.blit(t, (14, 8 + (28 - t.get_height()) // 2))
+        y = 42
+
+        def _section(title):
+            nonlocal y
+            y += 6
+            t = fn_small.render(title.upper(), True, _MUTED)
+            panel.blit(t, (12, y))
+            y += t.get_height() + 6
+
+        def _stat_row(label, value, color=None):
+            nonlocal y
+            col = color if color else _TEXT
+            row_h = 24
+
+            pygame.draw.rect(
+                panel,
+                _CARD,
+                (8, y, DW - 16, row_h),
+                border_radius=6
+            )
+
+            tl = fn_label.render(label, True, _MUTED)
+            tv = fn_value.render(str(value), True, col)
+
+            panel.blit(tl, (14, y + (row_h - tl.get_height()) // 2))
+            panel.blit(tv, (DW - tv.get_width() - 14, y + (row_h - tv.get_height()) // 2))
+
+            y += row_h + 5
+
+        def _bar(value, maximum, color):
+            nonlocal y
+            bw = DW - 24
+            bh = 7
+
+            pygame.draw.rect(panel, _CARD_ALT, (12, y, bw, bh), border_radius=4)
+
+            fill = int(bw * min(value, maximum) / max(maximum, 1))
+            if fill > 0:
+                pygame.draw.rect(panel, color, (12, y, fill, bh), border_radius=4)
+
+            y += bh + 8
+
+        # ── Sección: Partida actual ───────────────────────────────────────────
+        _section("Partida actual")
+
+        _stat_row("Banderas", lg.flags_placed,
+                  _YELLOW if lg.flags_placed > 0 else _TEXT)
+
+        stats.registrar_minas_correctas(lg.board)
+        _stat_row("Minas correctas", stats.minas_marcadas_correctas, _GREEN)
+        _stat_row("Restantes", lg.mines - lg.flags_placed, C_BLACK)
+        
+        revealed = sum(
+            1 for fila in lg.board
+            for c in fila if c["state"] == REVEALED and c["value"] != MINE
+        )
+        total_safe = lg.rows * lg.cols - lg.mines
+        _stat_row("Celdas reveladas", f"{revealed}/{total_safe}",
+                  _GREEN if lg.game_won else _TEXT)
+        _bar(revealed, total_safe, _GREEN)
+        
+
+        y += 4
+        # ── Sección: IA ───────────────────────────────────────────────────────
+        _section("Agente")
+        _stat_row("Turnos analizados", stats.turnos_ia)
+        _stat_row("Seguras inferidas", stats.seguras_identificadas, _GREEN)
+
+        avg_inc = (stats.inciertas_acumuladas // max(stats.turnos_ia, 1))
+        _stat_row("Inciertas (promedio)", avg_inc,
+                  _RED if avg_inc > 5 else _YELLOW if avg_inc > 0 else _GREEN)
+
+        _stat_row("Mov. aleatorios", stats.movimientos_aleatorios,
+                  _RED if stats.movimientos_aleatorios > 0 else _GREEN)
+
+        y += 4
+
+
+        if vis > 0:
+            clip_rect = pygame.Rect(0, 0, vis, DH)
+            screen.blit(panel, (self._win_w, 0), clip_rect)
+
+        # ── Pestaña de toggle ─────────────────────────────────────────────────
+        TAB_W = 16
+        TAB_H = 72
+        tab_x = self._win_w - TAB_W   # Siempre fijada al borde derecho del tablero principal
+        tab_y = DH // 2 - TAB_H // 2
+
+        tab_surf = pygame.Surface((TAB_W, TAB_H), pygame.SRCALPHA)
+        tab_surf.fill(C_GRAY_MID)
+
+        # Flecha indicadora (chevron)
+        arrow_pts = []
+        if self._drawer_open:
+            # apunta a la izquierda (← cerrar panel derecho)
+            ax, ay = TAB_W // 2 + 2, TAB_H // 2
+            arrow_pts = [
+                (ax - 3, ay),
+                (ax + 2, ay - 5),
+                (ax + 2, ay + 5),
+            ]
         else:
-            fl  = lg.mines - lg.flags_placed
-            msg = (f"{lg.mode}  |  {lg.cols}x{lg.rows}  |  "
-                   f"Minas: {lg.mines}  Banderas: {lg.flags_placed}  "
-                   f"Restantes: {fl}  Tiempo: {lg.elapsed}s  |  R -> reiniciar")
-        txt = self._font_status.render(msg, True, self._STATUS_TXT)
-        screen.blit(txt, (5, self._status_rect.y + 4))
+            # apunta a la derecha (→ abrir hacia afuera)
+            ax, ay = TAB_W // 2 - 2, TAB_H // 2
+            arrow_pts = [
+                (ax + 3, ay),
+                (ax - 2, ay - 5),
+                (ax - 2, ay + 5),
+            ]
+        pygame.draw.polygon(tab_surf, C_BLACK, arrow_pts)
+        
+        # Dibujar borde de la pestaña
+        pygame.draw.rect(tab_surf, C_BLACK, (0, 0, TAB_W, TAB_H), 1)
+
+        screen.blit(tab_surf, (tab_x, tab_y))

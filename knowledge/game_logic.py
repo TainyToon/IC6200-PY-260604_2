@@ -1,6 +1,4 @@
 import time
-import random
-
 from interface.constants import (
     UNREVEALED, REVEALED, FLAGGED, QUESTION, MINE,
     FACE_NORMAL, FACE_OFACE, FACE_DEAD, FACE_WON,
@@ -8,7 +6,8 @@ from interface.constants import (
 from utils.bombas import Bombas
 from utils.lugares_bomba import LugaresBomba
 from utils.utils import revelar_celdas_vacias
-from knowledge.logic_ia import LogicIA
+from knowledge.logic_ia import BuscaminasIA
+from knowledge.game_stats import GameStats
 
 class GameLogic:
 
@@ -35,7 +34,8 @@ class GameLogic:
         self.inciertas_ia               = []
 
         # Base de conocimiento persistente (se crea una vez por partida)
-        self.ia = LogicIA(self.rows, self.cols)
+        self.ia = BuscaminasIA(self.rows, self.cols)
+        self.stats = GameStats()
 
     # -----------------------------------------
     #  Tablero
@@ -121,12 +121,16 @@ class GameLogic:
             self.game_active = False
             self.face_state  = FACE_DEAD
             self._reveal_all_mines(row, col)
+            self.stats.cerrar_partida(False, self.elapsed)
         else:
+            self.stats.registrar_celda_revelada()
             revelar_celdas_vacias(self.board, row, col, self.rows, self.cols)
             if self._check_win():
                 self.game_won    = True
                 self.game_active = False
                 self.face_state  = FACE_WON
+                self.stats.registrar_minas_correctas(self.board)
+                self.stats.cerrar_partida(True, self.elapsed)
 
         return set()
 
@@ -204,6 +208,7 @@ class GameLogic:
 
         # Analizar tablero e incorporar nuevo conocimiento
         resultado = self.ia.analizar(self.board)
+        self.stats.registrar_turno_ia(resultado)
 
         # Marcar minas confirmadas con bandera
         for row, col in resultado["minas"]:
@@ -225,6 +230,8 @@ class GameLogic:
             self.game_active = False
             self.face_state  = FACE_WON
             self.esperando_decision_usuario = False
+            self.stats.registrar_minas_correctas(self.board)
+            self.stats.cerrar_partida(True, self.elapsed)
             return tocadas
 
         # Sin movimientos lógicos: pedir decisión al usuario
@@ -248,6 +255,7 @@ class GameLogic:
         row, col = cell
         print(f"[IA] Movimiento aleatorio en ({row}, {col})")
         tocadas.add((row, col))
+        self.stats.registrar_movimiento_aleatorio()
         c = self.board[row][col]
 
         if c["value"] == MINE:
@@ -257,6 +265,7 @@ class GameLogic:
             self.face_state  = FACE_DEAD
             self.esperando_decision_usuario = False
             self._reveal_all_mines(row, col)
+            self.stats.cerrar_partida(False, self.elapsed)
             return tocadas
 
         revelar_celdas_vacias(self.board, row, col, self.rows, self.cols)
@@ -264,6 +273,8 @@ class GameLogic:
             self.game_won    = True
             self.game_active = False
             self.face_state  = FACE_WON
+            self.stats.registrar_minas_correctas(self.board)
+            self.stats.cerrar_partida(True, self.elapsed)
         self.esperando_decision_usuario = False
         return tocadas
     
@@ -285,4 +296,5 @@ class GameLogic:
         self.esperando_decision_usuario = False
         self.inciertas_ia               = []
         self.ia.reset()
+        self.stats.reset_partida()
 
